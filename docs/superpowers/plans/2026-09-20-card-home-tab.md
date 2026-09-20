@@ -2803,7 +2803,7 @@ export class DashboardStore {
         try {
           await this.vault.createFolder(folder);
         } catch {
-          // 文件夹可能已被并发创建或被用户手工建好，忽略
+          // 文件夹可能已被并发创建，忽略
         }
       }
     }
@@ -3098,6 +3098,8 @@ Run: `npm run build`，把 `dist/` 拷到 vault 的 `.obsidian/plugins/card-home
 - 命令面板执行「打开首页」→ 出现首页视图。
 - 命令面板执行「在标签页打开仪表盘」→ 打开 `Home.md`。
 - 删掉 `Home.md` 再回首页 → 显示缺失提示，点「创建并打开」→ 文件被创建并打开。
+- **测一个多级路径**：把 `dashboardFile` 改成 `子目录/更深/Home.md` 再回首页 → 点「创建并打开」应当把两级目录都建出来。`vault.createFolder` 的递归行为不在类型声明里写明，这一步就是确认它。若只建出一级并抛错，说明它不递归，需要改成逐级创建。
+- **测 `process()` 的失败路径**：把 `Home.md` 删掉（不重开视图）后触发一次会写文件的操作，确认异常被 `await`/`catch` 住并弹出 Notice，而不是只在控制台留下未处理的 rejection。
 - 打开一个新标签页，在控制台执行 `app.workspace.getMostRecentLeaf().view.getViewType()`，确认返回值。**如果返回值不是 `"empty"`，把 `maybeReplaceEmptyLeaf` 里的字符串换成真实值**，然后重新验证新标签页会自动变成首页。
 
 - [ ] **Step 5: 提交**
@@ -4752,8 +4754,66 @@ git commit -m "feat: 首页内交互式修改卡片图标、片段与跨列数"
 `src/settings-tab.ts`：
 
 ```ts
-import { PluginSettingTab, Setting, type App } from "obsidian";
+import {
+  AbstractInputSuggest,
+  PluginSettingTab,
+  prepareFuzzySearch,
+  Setting,
+  TFile,
+  type App,
+} from "obsidian";
 import type CardHomeTabPlugin from "./main";
+
+/**
+ * 给"仪表盘文件"输入框加笔记补全。
+ *
+ * 这个字段用文本输入而不是下拉，因为它要能填一个还不存在的路径（用户先填、再让首页去创建）。
+ * 但纯文本框会引出一类很难查的死局：`getAbstractFileByPath` 是**大小写敏感**的精确匹配，
+ * 用户在 Windows/macOS 上把 `Home.md` 打成 `home.md`，文件明明在库里，`exists()` 却永远为 false，
+ * 首页一直显示"文件缺失"，点"创建并打开"也修不好。补全让用户从真实文件名里选，从源头消掉这种输入。
+ * `normalizeVaultPath` 仍然保留，作为手改 data.json 等情况下的兜底。
+ *
+ * `onPick` 是必需的：`setValue` 只是直接赋值给 input，不会触发 `input` 事件，
+ * 所以 Setting 的 `onChange` 收不到，选择结果不会被保存。
+ */
+class FilePathSuggest extends AbstractInputSuggest<TFile> {
+  private readonly onPick: (path: string) => void;
+
+  constructor(app: App, inputEl: HTMLInputElement, onPick: (path: string) => void) {
+    super(app, inputEl);
+    this.onPick = onPick;
+    this.limit = 50;
+  }
+
+  protected getSuggestions(query: string): TFile[] {
+    const files = this.app.vault.getMarkdownFiles();
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      return files.slice(0, this.limit);
+    }
+    const match = prepareFuzzySearch(trimmed);
+    const scored: { file: TFile; score: number }[] = [];
+    for (const file of files) {
+      const result = match(file.path);
+      if (result) {
+        scored.push({ file, score: result.score });
+      }
+    }
+    scored.sort((left, right) => right.score - left.score);
+    return scored.slice(0, this.limit).map((entry) => entry.file);
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.createDiv({ cls: "home-tab-suggestion-title", text: file.basename });
+    el.createDiv({ cls: "home-tab-suggestion-path", text: file.path });
+  }
+
+  selectSuggestion(file: TFile): void {
+    this.setValue(file.path);
+    this.onPick(file.path);
+    this.close();
+  }
+}
 
 export class CardHomeTabSettingTab extends PluginSettingTab {
   private readonly plugin: CardHomeTabPlugin;
@@ -4776,12 +4836,17 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("仪表盘文件")
       .setDesc("卡片内容所在的笔记路径。用标题切分卡片。")
-      .addText((text) =>
+      .addText((text) => {
+        new FilePathSuggest(this.app, text.inputEl, (path) => {
+          text.setValue(path);
+          settings.dashboardFile = path;
+          save();
+        });
         text.setValue(settings.dashboardFile).onChange((value) => {
           settings.dashboardFile = value;
           save();
-        }),
-      );
+        });
+      });
 
     new Setting(containerEl)
       .setName("卡片标题级别")
@@ -5055,7 +5120,9 @@ import { CardHomeTabSettingTab } from "./settings-tab";
 - [ ] **Step 3: 手工验收**
 
 - 设置页六个分区全部出现，改动后首页立刻反映（不用手动刷新）。
+- 仪表盘文件输入框：输入几个字符 → 弹出笔记补全（带模糊匹配），选中后设置被保存（重开设置页仍是选中的那篇）。
 - 仪表盘文件改成另一个笔记 → 首页改为渲染该笔记的卡片；路径不存在时首页显示缺失提示。
+- 把大小写写错（`home.md` 而库里是 `Home.md`）→ 这是补全要避免的输入；若用户仍手打错，行为与"路径不存在"一致，不会出现"文件明明在却永远显示缺失且创建也修不好"。**这一条要实际试一次**：先手打错，确认显示缺失；再用补全选对，确认恢复。
 - 卡片标题级别改成 3 → 首页改为按 `###` 切分。
 - 网格列数、Logo、背景、搜索各项改动 → 首页即时生效。
 - 在 `.obsidian/snippets/` 新增一个 `.css` → 点「刷新列表」后出现在片段列表里，且能在卡片设置里被选中。
