@@ -297,6 +297,20 @@ describe("mergeSettings", () => {
   it("stamps the current settings version", () => {
     expect(mergeSettings({ version: 0 }).version).toBe(DEFAULT_SETTINGS.version);
   });
+
+  it("keeps fractional values for settings that are not integers", () => {
+    expect(mergeSettings({ logoScale: 1.2 }).logoScale).toBe(1.2);
+    expect(mergeSettings({ logoScale: 0.25 }).logoScale).toBe(0.3);
+    expect(mergeSettings({ logoScale: 9 }).logoScale).toBe(5);
+    expect(mergeSettings({ logoScale: 0 }).logoScale).toBe(0.2);
+  });
+
+  it("does not alias the shared defaults array", () => {
+    const merged = mergeSettings(undefined);
+    expect(merged.recentFiles).not.toBe(DEFAULT_SETTINGS.recentFiles);
+    merged.recentFiles.push({ path: "leak.md", timestamp: 1 });
+    expect(DEFAULT_SETTINGS.recentFiles).toHaveLength(0);
+  });
 });
 ```
 
@@ -410,6 +424,22 @@ function pickNumber(
   return Math.min(maximum, Math.max(minimum, Math.round(value)));
 }
 
+/** 用于 slider 步长小于 1 的字段（如 logoScale 的 0.1 步长），保留一位小数 */
+function pickDecimal(
+  raw: RawRecord,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const value = raw[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const rounded = Math.round(value * 10) / 10;
+  return Math.min(maximum, Math.max(minimum, rounded));
+}
+
 function pickUnion<T extends string>(
   raw: RawRecord,
   key: string,
@@ -452,7 +482,7 @@ function parseRecentFiles(value: unknown): RecentFile[] {
 export function mergeSettings(raw: unknown): CardHomeTabSettings {
   const record = asRecord(raw);
   if (!record) {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, recentFiles: [] };
   }
   return {
     version: SETTINGS_VERSION,
@@ -467,7 +497,7 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
       DEFAULT_SETTINGS.logoType,
     ),
     logoValue: pickString(record, "logoValue", DEFAULT_SETTINGS.logoValue),
-    logoScale: pickNumber(record, "logoScale", DEFAULT_SETTINGS.logoScale, 0.2, 5),
+    logoScale: pickDecimal(record, "logoScale", DEFAULT_SETTINGS.logoScale, 0.2, 5),
     logoColor: pickString(record, "logoColor", DEFAULT_SETTINGS.logoColor),
     wordmark: pickString(record, "wordmark", DEFAULT_SETTINGS.wordmark),
     showWordmark: pickBoolean(record, "showWordmark", DEFAULT_SETTINGS.showWordmark),
@@ -499,7 +529,7 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
 - [ ] **Step 5: 运行测试确认通过**
 
 Run: `npx vitest run tests/settings.test.ts`
-Expected: PASS，8 个用例。
+Expected: PASS，10 个用例。
 
 - [ ] **Step 6: 跑通完整检查并提交**
 
@@ -2482,7 +2512,7 @@ import { HOME_VIEW_TYPE, HomeView } from "./home-view";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
 
 export default class CardHomeTabPlugin extends Plugin {
-  settings: CardHomeTabSettings = { ...DEFAULT_SETTINGS };
+  settings: CardHomeTabSettings = { ...DEFAULT_SETTINGS, recentFiles: [] };
   store!: DashboardStore;
 
   private selfWriting = false;
