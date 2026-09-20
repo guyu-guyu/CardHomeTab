@@ -1,0 +1,16 @@
+src/dashboard/metadata.ts
+  h_d9088715075e51 1-89
+tests/metadata.test.ts
+  h_d9088715075e51 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6cc51e30f39d50df09be48cd25a8cea0f575791e",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
