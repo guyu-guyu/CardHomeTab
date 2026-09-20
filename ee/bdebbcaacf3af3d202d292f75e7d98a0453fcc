@@ -1,0 +1,18 @@
+src/dashboard/io.ts
+  h_d9088715075e51 4-6,18
+src/vault-path.ts
+  h_d9088715075e51 1-23
+tests/vault-path.test.ts
+  h_d9088715075e51 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eebdebbcaacf3af3d202d292f75e7d98a0453fcc",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
