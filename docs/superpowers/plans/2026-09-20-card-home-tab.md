@@ -1314,7 +1314,8 @@ describe("updateCardMeta", () => {
     );
   });
 
-  it("leaves every other card byte-identical", () => {    const text = [
+  it("leaves every other card byte-identical", () => {
+    const text = [
       "前言",
       "",
       "## 甲",
