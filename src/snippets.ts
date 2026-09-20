@@ -48,6 +48,11 @@ interface CacheEntry {
   css: string;
 }
 
+/** 片段名会被拼进文件路径，拒绝分隔符与上级引用，避免 `user:../../x` 读到 snippets 目录之外 */
+function isSafeSnippetName(name: string): boolean {
+  return !name.includes("/") && !name.includes("\\") && !name.includes("..");
+}
+
 export class SnippetRegistry {
   private readonly app: App;
   private userNames: string[] | null = null;
@@ -102,7 +107,12 @@ export class SnippetRegistry {
       return null;
     }
     if (parsed.source === "builtin") {
-      return BUILTIN_SNIPPETS[parsed.name] ?? null;
+      return Object.hasOwn(BUILTIN_SNIPPETS, parsed.name)
+        ? (BUILTIN_SNIPPETS[parsed.name] ?? null)
+        : null;
+    }
+    if (!isSafeSnippetName(parsed.name)) {
+      return null;
     }
     const path = `${this.directory}/${parsed.name}.css`;
     try {

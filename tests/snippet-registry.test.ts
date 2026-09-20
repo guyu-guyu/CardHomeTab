@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { BUILTIN_SNIPPETS, parseSnippetRef } from "../src/snippets";
+import type { App } from "obsidian";
+import { BUILTIN_SNIPPETS, parseSnippetRef, SnippetRegistry } from "../src/snippets";
 import { BUILTIN_SNIPPET_NAMES } from "../src/auto-snippets";
+
+/**
+ * 取出样式表里所有选择器。按行取会漏掉逗号续行（`.a,\n.b {` 里的 `.a`），
+ * 实测五个片段里共有 11 行这样的续行，`base.css` 的第一个选择器就是其中之一——
+ * 漏掉它们会让下面的"每个选择器都限定在卡片内"断言出现盲区。
+ */
+function selectorsOf(css: string): string[] {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const found: string[] = [];
+  const pattern = /([^{}]+)\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(withoutComments)) !== null) {
+    for (const part of (match[1] ?? "").split(",")) {
+      const selector = part.trim().replace(/\s+/g, " ");
+      if (selector.length > 0 && !selector.startsWith("@")) {
+        found.push(selector);
+      }
+    }
+  }
+  return found;
+}
 
 describe("BUILTIN_SNIPPETS", () => {
   it("ships a stylesheet for every builtin name", () => {
@@ -25,21 +47,21 @@ describe("BUILTIN_SNIPPETS", () => {
   it("never relies on .block-language-query, which Obsidian does not emit", () => {
     // 只在选择器上断言：query.css 的注释里正当地提到了这个类名（就是为了说明它不存在），
     // 对整段 CSS 文本做子串匹配会把那句警告本身判成违规。
-    const selectors = (BUILTIN_SNIPPETS["query"] ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.endsWith("{") && !line.startsWith("@"));
-    for (const selector of selectors) {
+    for (const selector of selectorsOf(BUILTIN_SNIPPETS["query"] ?? "")) {
       expect(selector, `query must not style ${selector}`).not.toContain(".block-language-query");
+    }
+  });
+
+  it("never relies on .search-result-file-path, which Obsidian does not emit", () => {
+    for (const selector of selectorsOf(BUILTIN_SNIPPETS["query"] ?? "")) {
+      expect(selector, `query must not style ${selector}`).not.toContain(".search-result-file-path");
     }
   });
 
   it("scopes every rule to the card content container", () => {
     for (const [name, css] of Object.entries(BUILTIN_SNIPPETS)) {
-      const selectors = css
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.endsWith("{") && !line.startsWith("@"));
+      const selectors = selectorsOf(css);
+      expect(selectors.length, `${name} has no selectors`).toBeGreaterThan(0);
       for (const selector of selectors) {
         expect(selector, `${name} leaks outside the card: ${selector}`).toContain(
           ".home-card-content",
@@ -69,5 +91,27 @@ describe("parseSnippetRef", () => {
     expect(parseSnippetRef("user:")).toBeNull();
     expect(parseSnippetRef("builtin:")).toBeNull();
     expect(parseSnippetRef("other:mine")).toBeNull();
+  });
+});
+
+describe("SnippetRegistry.read", () => {
+  // `builtin:` 的读取不碰 adapter，所以这里可以只喂一个最小 stub；
+  // 配置文件目录字面量走不了 obsidianmd/hardcoded-config-path，故用中性值。
+  const registry = () =>
+    new SnippetRegistry({ vault: { configDir: ".vault-config" } } as unknown as App);
+
+  it("does not resolve inherited object properties as builtin snippets", async () => {
+    const snippets = registry();
+    await expect(snippets.read("builtin:constructor")).resolves.toBeNull();
+    await expect(snippets.read("builtin:toString")).resolves.toBeNull();
+    await expect(snippets.read("builtin:hasOwnProperty")).resolves.toBeNull();
+    await expect(snippets.read("builtin:base")).resolves.toContain(".bases-view");
+  });
+
+  it("refuses a user reference that would escape the snippets directory", async () => {
+    const snippets = registry();
+    await expect(snippets.read("user:../../secret")).resolves.toBeNull();
+    await expect(snippets.read("user:sub/name")).resolves.toBeNull();
+    await expect(snippets.read("user:..")).resolves.toBeNull();
   });
 });
