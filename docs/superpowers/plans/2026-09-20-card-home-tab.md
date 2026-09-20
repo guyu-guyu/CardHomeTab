@@ -1896,6 +1896,17 @@ describe("scopeSnippet", () => {
     expect(result).toContain('content: ":root"');
   });
 
+  it("rewrites :ROOT case-insensitively", () => {
+    const result = scopeSnippet(":ROOT { --x: 1; }", "card-1");
+    expect(result).toContain(":scope { --x: 1; }");
+    expect(result).not.toContain(":ROOT");
+  });
+
+  it("rejects a real @import that follows a leading comment", () => {
+    const result = scopeSnippet('/* 说明 */\n@import url("evil.css");\n.a { color: red; }', "card-1");
+    expect(result).toBe("");
+  });
+
   it("keeps at-rules that are legal inside @scope", () => {
     const result = scopeSnippet("@media (min-width: 600px) { .a { color: red; } }", "card-1");
     expect(result).toContain("@media (min-width: 600px)");
@@ -1928,6 +1939,18 @@ describe("scopedStylesheet", () => {
     expect(scopedStylesheet([{ ref: "builtin:base", css: ".b{}" }], "card-2")).toContain(
       "builtin:base",
     );
+  });
+
+  it("does not let a reference close its own label comment", () => {
+    const result = scopedStylesheet(
+      [{ ref: "x */ .evil { display: none } /*", css: ".a {}" }],
+      "card-2",
+    );
+    const label = result.slice(0, result.indexOf("\n"));
+    expect(label.startsWith("/* ")).toBe(true);
+    expect(label.endsWith(" */")).toBe(true);
+    expect(label.slice(3, -3)).not.toContain("*/");
+    expect(result).toContain(`@scope (${selector("card-2")})`);
   });
 
   it("skips parts that resolve to an empty snippet", () => {
@@ -1964,7 +1987,7 @@ export function cardScopeSelector(cardId: string): string {
 
 const IMPORT_PATTERN = /@import\b/i;
 const COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
-const ROOT_PATTERN = /(^|[{};,]|\*\/)(\s*):root\b/g;
+const ROOT_PATTERN = /(^|[{};,]|\*\/)(\s*):root\b/gi;
 
 function stripComments(css: string): string {
   return css.replace(COMMENT_PATTERN, " ");
@@ -1995,12 +2018,17 @@ export function scopeSnippet(css: string, cardId: string): string {
   return `@scope (${cardScopeSelector(cardId)}) {\n${rewriteRoot(trimmed)}\n}`;
 }
 
+/** 标签只用于 devtools 里辨认来源，把非安全字符替换掉，避免 ref 里的 `*/` 把自己的注释提前闭合 */
+function labelFor(ref: string): string {
+  return ref.replace(/[^\w:.-]/g, "_");
+}
+
 export function scopedStylesheet(parts: { ref: string; css: string }[], cardId: string): string {
   const blocks: string[] = [];
   for (const part of parts) {
     const scoped = scopeSnippet(part.css, cardId);
     if (scoped.length > 0) {
-      blocks.push(`/* ${part.ref} */\n${scoped}`);
+      blocks.push(`/* ${labelFor(part.ref)} */\n${scoped}`);
     }
   }
   return blocks.join("\n");
@@ -2010,9 +2038,15 @@ export function scopedStylesheet(parts: { ref: string; css: string }[], cardId: 
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/snippet-scope.test.ts`
-Expected: PASS，16 个用例。
+Expected: PASS，19 个用例。
 
-`ROOT_PATTERN` 的前缀字符类里那个 `\*\/` 是必需的，不是凑数：`@scope` 内部的 `:root` 指向文档根，不在作用域里，匹配不到任何元素，所以片段里的 `:root { --x: 1 }` 必须被改写成 `:scope`，否则变量根本没定义、依赖它的样式全部静默失效。而片段开头写一行注释（`/* 卡片配色 */`）是最常见的 CSS 习惯，此时 `:root` 前面是 `*/` 而不是 `^`/`{`/`}`/`;`/`,`——不加这个分支就完全不会改写。加 `\*\/` 之后，声明值里的 `":root"` 仍然不受影响（它前面是引号），最后一条测试钉的就是这个边界。
+三个补充点：
+
+- `ROOT_PATTERN` 的 `i` 标志：CSS 伪类名是 ASCII 大小写不敏感的，`:ROOT` 是合法写法。之前没有 `i`，`:ROOT` 不会被改写，进了 `@scope` 就匹配不到任何东西，变量静默失效——和刚修的"注释后 `:root` 不改写"是同一个失败模式。
+- `labelFor`：标签是 `/* ref */` 形式插进样式表里的，而 `ref` 来自卡片元数据（Note 里手写的），不是受信常量。一个含 `*/` 的 ref 会提前闭合注释，把后面的内容变成**未作用域的顶层 CSS**，绕过本模块唯一的存在理由。`labelFor` 把非 `[\w:.-]` 字符换成 `_`。标签只用于 devtools 辨认来源，替换没有任何功能代价。
+- `scopedStylesheet` 只在 `scopeSnippet` 返回非空时才输出标签，所以今天这条路要先有一个能解析出真实 CSS 的 ref（Task 7 才决定这条链路的白名单）才谈得上触发。仍然先堵上：这是"把插值数据写进注释前先转义"，不是为不可能的场景加防御。
+
+`ROOT_PATTERN` 的前缀字符类里那个 `\*\/` 是必需的，不是凑数：`@scope` 内部的 `:root` 指向文档根，不在作用域里，匹配不到任何元素，所以片段里的 `:root { --x: 1 }` 必须被改写成 `:scope`，否则变量根本没定义、依赖它的样式全部静默失效。而片段开头写一行注释（`/* 卡片配色 */`）是最常见的 CSS 习惯，此时 `:root` 前面是 `*/` 而不是 `^`/`{`/`}`/`;`/`,`——不加这个分支就完全不会改写。加 `\*\/` 之后，声明值里的 `":root"` 仍然不受影响（它前面是引号），对应测试钉的就是这个边界。
 
 - [ ] **Step 5: 提交**
 
