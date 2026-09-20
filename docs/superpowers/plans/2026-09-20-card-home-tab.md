@@ -1885,6 +1885,17 @@ describe("scopeSnippet", () => {
     expect(result).toContain('content: ":root"');
   });
 
+  it("rewrites :root that follows a comment", () => {
+    const result = scopeSnippet("/* 卡片配色 */\n:root { --x: 1; }", "card-1");
+    expect(result).toContain(":scope { --x: 1; }");
+    expect(result).not.toContain(":root");
+  });
+
+  it("still leaves a :root inside a declaration value alone when a comment precedes it", () => {
+    const result = scopeSnippet('/* c */ .a { content: ":root"; }', "card-1");
+    expect(result).toContain('content: ":root"');
+  });
+
   it("keeps at-rules that are legal inside @scope", () => {
     const result = scopeSnippet("@media (min-width: 600px) { .a { color: red; } }", "card-1");
     expect(result).toContain("@media (min-width: 600px)");
@@ -1953,7 +1964,7 @@ export function cardScopeSelector(cardId: string): string {
 
 const IMPORT_PATTERN = /@import\b/i;
 const COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
-const ROOT_PATTERN = /(^|[{};,])(\s*):root\b/g;
+const ROOT_PATTERN = /(^|[{};,]|\*\/)(\s*):root\b/g;
 
 function stripComments(css: string): string {
   return css.replace(COMMENT_PATTERN, " ");
@@ -1999,7 +2010,9 @@ export function scopedStylesheet(parts: { ref: string; css: string }[], cardId: 
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/snippet-scope.test.ts`
-Expected: PASS，14 个用例。
+Expected: PASS，16 个用例。
+
+`ROOT_PATTERN` 的前缀字符类里那个 `\*\/` 是必需的，不是凑数：`@scope` 内部的 `:root` 指向文档根，不在作用域里，匹配不到任何元素，所以片段里的 `:root { --x: 1 }` 必须被改写成 `:scope`，否则变量根本没定义、依赖它的样式全部静默失效。而片段开头写一行注释（`/* 卡片配色 */`）是最常见的 CSS 习惯，此时 `:root` 前面是 `*/` 而不是 `^`/`{`/`}`/`;`/`,`——不加这个分支就完全不会改写。加 `\*\/` 之后，声明值里的 `":root"` 仍然不受影响（它前面是引号），最后一条测试钉的就是这个边界。
 
 - [ ] **Step 5: 提交**
 
