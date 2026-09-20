@@ -32,6 +32,7 @@
 | `src/settings.ts` | 设置类型、默认值、纯函数合并与迁移 | 1 |
 | `src/css-modules.d.ts` | `.css` 文本导入的环境声明 | 1 |
 | `src/dashboard/metadata.ts` | `%%card:%%` 注释的解析与生成 | 2 |
+| `src/fences.ts` | 围栏代码块识别（`parse.ts` 与 `auto-snippets.ts` 共用） | 3 |
 | `src/dashboard/parse.ts` | 仪表盘文本 → `CardSection[]` | 3 |
 | `src/dashboard/edit.ts` | 增 / 删 / 改元数据 / 移动 section，逐字节保真 | 4 |
 | `src/auto-snippets.ts` | `css=auto` 按内容类型推断片段 | 5 |
@@ -758,15 +759,23 @@ git commit -m "feat: 支持 %%card:%% 卡片元数据注释的解析与生成"
 
 ---
 
-### Task 3: 仪表盘文件解析
+### Task 3: 围栏识别与仪表盘文件解析
 
 **Files:**
-- Create: `src/dashboard/parse.ts`
-- Test: `tests/parse.test.ts`
+- Create: `src/fences.ts`, `src/dashboard/parse.ts`
+- Test: `tests/fences.test.ts`, `tests/parse.test.ts`
 
 **Interfaces:**
 - Consumes: `CardMeta`、`parseCardMeta`（Task 2）
-- Produces: `CardSection`、`parseDashboard(text: string, headingLevel: number): CardSection[]`、`sectionBody(text: string, section: CardSection): string`
+- Produces:
+  - `interface Fence { marker: string; length: number }`
+  - `matchFenceOpening(line: string): { fence: Fence; info: string } | null`
+  - `isFenceClosing(fence: Fence, line: string): boolean`
+  - `CardSection`、`parseDashboard(text: string, headingLevel: number): CardSection[]`、`sectionBody(text: string, section: CardSection): string`
+
+`src/fences.ts` 是 `dashboard/parse.ts` 与 `auto-snippets.ts`（Task 5）共用的围栏识别逻辑，单独成模块避免同一套规则被抄两份。
+
+`CardSection` 的形状：
 
 ```ts
 interface CardSection {
@@ -780,7 +789,105 @@ interface CardSection {
 }
 ```
 
-- [ ] **Step 1: 写失败的测试**
+- [ ] **Step 1: 写围栏识别失败的测试**
+
+`tests/fences.test.ts`：
+
+```ts
+import { describe, expect, it } from "vitest";
+import { isFenceClosing, matchFenceOpening } from "../src/fences";
+
+describe("matchFenceOpening", () => {
+  it("matches backtick and tilde fences", () => {
+    expect(matchFenceOpening("```")).toEqual({ fence: { marker: "`", length: 3 }, info: "" });
+    expect(matchFenceOpening("~~~")).toEqual({ fence: { marker: "~", length: 3 }, info: "" });
+  });
+
+  it("captures the language info string", () => {
+    expect(matchFenceOpening("```dataviewjs")).toEqual({
+      fence: { marker: "`", length: 3 },
+      info: "dataviewjs",
+    });
+  });
+
+  it("accepts up to three leading spaces", () => {
+    expect(matchFenceOpening("   ```js")).toEqual({
+      fence: { marker: "`", length: 3 },
+      info: "js",
+    });
+    expect(matchFenceOpening("    ```js")).toBeNull();
+  });
+
+  it("records the run length so longer fences can nest shorter ones", () => {
+    expect(matchFenceOpening("````")).toEqual({ fence: { marker: "`", length: 4 }, info: "" });
+  });
+
+  it("rejects a fence marker that is not at the start of a line", () => {
+    expect(matchFenceOpening("文字 ```base 文字")).toBeNull();
+    expect(matchFenceOpening("`行内代码`")).toBeNull();
+  });
+});
+
+describe("isFenceClosing", () => {
+  const backtick3 = { marker: "`", length: 3 };
+
+  it("accepts the same character with equal or greater length", () => {
+    expect(isFenceClosing(backtick3, "```")).toBe(true);
+    expect(isFenceClosing(backtick3, "````")).toBe(true);
+  });
+
+  it("rejects a shorter run or a different character", () => {
+    expect(isFenceClosing(backtick3, "``")).toBe(false);
+    expect(isFenceClosing(backtick3, "~~~")).toBe(false);
+  });
+
+  it("rejects trailing content", () => {
+    expect(isFenceClosing(backtick3, "```js")).toBe(false);
+  });
+
+  it("allows trailing whitespace and leading indentation", () => {
+    expect(isFenceClosing(backtick3, "  ```  ")).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `npx vitest run tests/fences.test.ts`
+Expected: FAIL — 无法解析 `../src/fences`。
+
+- [ ] **Step 3: 写围栏识别实现**
+
+`src/fences.ts`：
+
+```ts
+export interface Fence {
+  marker: string;
+  length: number;
+}
+
+const OPENING_PATTERN = /^ {0,3}(`{3,}|~{3,})([^\s`~]*)/;
+
+export function matchFenceOpening(line: string): { fence: Fence; info: string } | null {
+  const match = OPENING_PATTERN.exec(line);
+  if (!match) {
+    return null;
+  }
+  const run = match[1]!;
+  return { fence: { marker: run[0]!, length: run.length }, info: match[2] ?? "" };
+}
+
+export function isFenceClosing(fence: Fence, line: string): boolean {
+  return new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}\\s*$`).test(line);
+}
+```
+
+- [ ] **Step 4: 运行围栏测试确认通过**
+
+Run: `npx vitest run tests/fences.test.ts`
+Expected: PASS，9 个用例。
+
+- [ ] **Step 5: 写解析失败的测试**
 
 `tests/parse.test.ts`：
 
@@ -926,16 +1033,17 @@ describe("parseDashboard", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [ ] **Step 6: 运行测试确认失败**
 
 Run: `npx vitest run tests/parse.test.ts`
 Expected: FAIL — 无法解析 `../src/dashboard/parse`。
 
-- [ ] **Step 3: 写实现**
+- [ ] **Step 7: 写解析实现**
 
 `src/dashboard/parse.ts`：
 
 ```ts
+import { isFenceClosing, matchFenceOpening, type Fence } from "../fences";
 import { parseCardMeta, type CardMeta } from "./metadata";
 
 export interface CardSection {
@@ -954,11 +1062,6 @@ interface Line {
   end: number;
 }
 
-interface Fence {
-  marker: string;
-  length: number;
-}
-
 function toLines(text: string): Line[] {
   const lines: Line[] = [];
   let start = 0;
@@ -972,19 +1075,6 @@ function toLines(text: string): Line[] {
     lines.push({ text: text.slice(start), start, end: text.length });
   }
   return lines;
-}
-
-function fenceOpening(line: string): Fence | null {
-  const match = /^ {0,3}(`{3,}|~{3,})([^\s`~]*)/.exec(line);
-  if (!match) {
-    return null;
-  }
-  const run = match[1]!;
-  return { marker: run[0]!, length: run.length };
-}
-
-function fenceClosing(fence: Fence, line: string): boolean {
-  return new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}\\s*$`).test(line);
 }
 
 function headingMatch(line: string): { level: number; title: string } | null {
@@ -1037,14 +1127,14 @@ export function parseDashboard(text: string, headingLevel: number): CardSection[
       continue;
     }
     if (fence) {
-      if (fenceClosing(fence, line.text)) {
+      if (isFenceClosing(fence, line.text)) {
         fence = null;
       }
       continue;
     }
-    const opening = fenceOpening(line.text);
+    const opening = matchFenceOpening(line.text);
     if (opening) {
-      fence = opening;
+      fence = opening.fence;
       continue;
     }
     const heading = headingMatch(line.text);
@@ -1080,7 +1170,7 @@ export function parseDashboard(text: string, headingLevel: number): CardSection[
       if (line.text.trim().length === 0) {
         continue;
       }
-      if (fenceOpening(line.text)) {
+      if (matchFenceOpening(line.text)) {
         break;
       }
       const meta = parseCardMeta(line.text);
@@ -1102,16 +1192,19 @@ export function sectionBody(text: string, section: CardSection): string {
 
 元数据扫描是第二个独立循环，遇到围栏起始行直接 `break`，因此代码块里的 `%%card:%%` 不会被误判。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [ ] **Step 8: 运行解析测试确认通过**
 
 Run: `npx vitest run tests/parse.test.ts`
 Expected: PASS，19 个用例。
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 9: 跑全量测试并提交**
+
+Run: `npm test`
+Expected: `tests/fences.test.ts` 9 个 + `tests/parse.test.ts` 19 个 + 之前的用例全部通过。
 
 ```bash
-git add src/dashboard/parse.ts tests/parse.test.ts
-git commit -m "feat: 仪表盘文件按标题切分卡片，跳过围栏代码块与 frontmatter"
+git add src/fences.ts src/dashboard/parse.ts tests/fences.test.ts tests/parse.test.ts
+git commit -m "feat: 围栏识别抽成共享模块，仪表盘按标题切分卡片"
 ```
 
 ---
@@ -1401,7 +1494,7 @@ git commit -m "feat: section 增删改移，文件其余部分逐字节保真"
 - Test: `tests/auto-snippets.test.ts`
 
 **Interfaces:**
-- Consumes: `CardMeta`、`AUTO_CSS`（Task 2）
+- Consumes: `CardMeta`、`AUTO_CSS`（Task 2）；`Fence`、`matchFenceOpening`、`isFenceClosing`（Task 3）
 - Produces: `BUILTIN_SNIPPET_NAMES: readonly string[]`、`detectContentSnippets(markdown: string): string[]`、`resolveSnippetRefs(meta: CardMeta, markdown: string): string[]`
 
 约定：`detectContentSnippets` 返回不带前缀的片段名（`text` / `code` / `base` / `query` / `dataview`），顺序固定；`resolveSnippetRefs` 返回带前缀的完整引用，裸名按 `builtin:` 处理。
@@ -1511,6 +1604,7 @@ Expected: FAIL — 无法解析 `../src/auto-snippets`。
 `src/auto-snippets.ts`：
 
 ```ts
+import { isFenceClosing, matchFenceOpening, type Fence } from "./fences";
 import { AUTO_CSS, type CardMeta } from "./dashboard/metadata";
 
 export const BUILTIN_SNIPPET_NAMES = ["code", "base", "query", "dataview", "text"] as const;
@@ -1524,13 +1618,7 @@ const CONTENT_LANGUAGES: Record<string, string> = {
   dataviewjs: "dataview",
 };
 
-const FENCE_PATTERN = /^ {0,3}(`{3,}|~{3,})([^\s`~]*)/;
 const BASE_EMBED_PATTERN = /!\[\[[^\]]*\.base(\|[^\]]*)?\]\]/i;
-
-interface Fence {
-  marker: string;
-  length: number;
-}
 
 export function detectContentSnippets(markdown: string): string[] {
   const found = new Set<string>(["text"]);
@@ -1538,22 +1626,20 @@ export function detectContentSnippets(markdown: string): string[] {
 
   for (const line of markdown.split("\n")) {
     if (fence) {
-      const closer = new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}\\s*$`);
-      if (closer.test(line)) {
+      if (isFenceClosing(fence, line)) {
         fence = null;
       }
       continue;
     }
-    const opening = FENCE_PATTERN.exec(line);
+    const opening = matchFenceOpening(line);
     if (opening) {
-      const run = opening[1]!;
-      const language = (opening[2] ?? "").toLowerCase();
+      const language = opening.info.toLowerCase();
       found.add("code");
       const mapped = CONTENT_LANGUAGES[language];
       if (mapped) {
         found.add(mapped);
       }
-      fence = { marker: run[0]!, length: run.length };
+      fence = opening.fence;
       continue;
     }
     if (BASE_EMBED_PATTERN.test(line)) {
