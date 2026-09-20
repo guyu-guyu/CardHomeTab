@@ -1,0 +1,28 @@
+src/builtin-snippets/base.css
+  h_d9088715075e51 1-30
+src/builtin-snippets/code.css
+  h_d9088715075e51 1-15
+src/builtin-snippets/dataview.css
+  h_d9088715075e51 1-46
+src/builtin-snippets/query.css
+  h_d9088715075e51 1-24
+src/builtin-snippets/text.css
+  h_d9088715075e51 1-36
+src/snippets.ts
+  h_d9088715075e51 1-130
+tests/snippet-registry.test.ts
+  h_d9088715075e51 1-73
+vitest.config.ts
+  h_d9088715075e51 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7e503b91a7dd8f05f54e5d37716c3a09ab08c723",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
