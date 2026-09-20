@@ -2280,7 +2280,15 @@ describe("BUILTIN_SNIPPETS", () => {
   });
 
   it("never relies on .block-language-query, which Obsidian does not emit", () => {
-    expect(BUILTIN_SNIPPETS["query"]).not.toContain(".block-language-query");
+    // 只在选择器上断言：query.css 的注释里正当地提到了这个类名（就是为了说明它不存在），
+    // 对整段 CSS 文本做子串匹配会把那句警告本身判成违规。
+    const selectors = (BUILTIN_SNIPPETS["query"] ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith("{") && !line.startsWith("@"));
+    for (const selector of selectors) {
+      expect(selector, `query must not style ${selector}`).not.toContain(".block-language-query");
+    }
   });
 
   it("scopes every rule to the card content container", () => {
@@ -2475,25 +2483,56 @@ Expected: FAIL，但**不是**解析错误——`tests/snippet-registry.test.ts`
 `vitest.config.ts`：
 
 ```ts
+import { readFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+
+/**
+ * 构建与测试用的不是同一套打包器：esbuild.config.mjs 里配的 `.css` text loader
+ * 只作用于构建产物，而 vitest 跑在 Vite 下，Vite 默认不把 `.css` 当文本。
+ *
+ * 更麻烦的是，vitest 自己有两个内置插件专门把 `.css` 变成空模块
+ * （`test.css` 默认为 false）：
+ *   - "vitest:css-disable"    enforce "pre"  返回 { code: "" }
+ *   - "vitest:css-empty-post" enforce "post" 返回 `export default ""`
+ * 它们分别守在 pre / post 两端，且都按 id 的扩展名判断，所以用户插件无论设成哪个
+ * enforce 都会被覆盖。
+ *
+ * 因此这里不靠 enforce 抢顺序，而是在 resolveId 阶段把 `*.css` 换成不以 `.css`
+ * 结尾的虚拟 id。cssLangRE 不再命中之后，上述两个内置插件与 vite:css 都会跳过，
+ * 只剩下面的 load 把文件原文当纯文本导出。src/snippets.ts 的 import 保持原样，
+ * esbuild 侧的 ".css": "text" loader 也不受影响。
+ */
+const VIRTUAL_PREFIX = "\0card-home-tab-css-text:";
+const VIRTUAL_SUFFIX = "!raw";
 
 export default defineConfig({
   plugins: [
     {
       name: "card-home-tab-css-as-text",
       enforce: "pre",
-      transform(source: string, id: string) {
-        if (!id.includes(".css")) {
+      resolveId(source: string, importer: string | undefined) {
+        if (!source.endsWith(".css") || importer === undefined) {
           return null;
         }
-        return `export default ${JSON.stringify(source)};`;
+        const absolute = isAbsolute(source) ? source : resolve(dirname(importer), source);
+        return `${VIRTUAL_PREFIX}${absolute}${VIRTUAL_SUFFIX}`;
+      },
+      load(id: string) {
+        if (!id.startsWith(VIRTUAL_PREFIX) || !id.endsWith(VIRTUAL_SUFFIX)) {
+          return null;
+        }
+        const file = id.slice(VIRTUAL_PREFIX.length, -VIRTUAL_SUFFIX.length);
+        return `export default ${JSON.stringify(readFileSync(file, "utf8"))};`;
       },
     },
   ],
 });
 ```
 
-`enforce: "pre"` 是必需的——要在 Vite 自己的 CSS 插件之前拦下来。这个文件不参与 `tsc --noEmit`（`tsconfig.json` 的 `include` 只覆盖 `src/**` 与 `tests/**`），也不参与 `eslint`（脚本只扫 `src tests`），所以不需要额外的类型或 lint 配置。
+**不要用更直觉的 `transform` + `enforce: "pre"` 版本**——它在 vitest 5 上是失效的：实测输出与不加配置时逐字节相同（`BUILTIN_SNIPPETS[name]` 仍然是 `''`），因为 vitest 的 `vitest:css-disable`（pre）与 `vitest:css-empty-post`（post）按扩展名两头夹击，用户插件的 `enforce` 抢不到。`test.css: true` 也不行，会换成 `vite:css` 接管、结果是 `undefined`。虚拟 id 绕开的是"按 `.css` 扩展名判断"这个机制本身，所以它有效。
+
+这个文件不参与 `tsc --noEmit`（`tsconfig.json` 的 `include` 只覆盖 `src/**` 与 `tests/**`），也不参与 `eslint`（脚本只扫 `src tests`），所以不需要额外的类型或 lint 配置。
 
 - [ ] **Step 7: 运行测试确认通过**
 
@@ -2503,11 +2542,20 @@ Expected: PASS，9 个用例。
 - [ ] **Step 8: 跑通完整检查并提交**
 
 Run: `npm run check`
-Expected: 全绿，且 `dist/main.js` 里能搜到内置片段的内容（确认 esbuild 的 text loader 仍然生效）：
+Expected: 全绿。
+
+还要确认 esbuild 侧的 text loader 仍然生效。**不要**去 grep `dist/main.js`：此时 `src/main.ts` 还是 Task 1 留下的空壳，`treeShaking` 会把没人引用的 `src/snippets.ts` 整块丢掉，`grep -c` 会得到 0，看起来像 loader 坏了。要等 Task 10 把片段渲染接到视图上之后，`dist/main.js` 里才会出现内置片段的内容。现在按下面的方式单独打包这个模块来验证：
 
 ```bash
-grep -c "home-card-content" dist/main.js
+npx esbuild src/snippets.ts --bundle --format=cjs --platform=browser \
+  --loader:.css=text --external:obsidian \
+  --outfile=.superpowers/sdd/snippets-probe.js
+grep -c "home-card-content" .superpowers/sdd/snippets-probe.js
 ```
+
+Expected: 大于 0（每个片段文件里的 `.home-card-content` 选择器都会被内联进产物）。
+
+`.superpowers/sdd/` 是自忽略的临时目录，产物不会被提交。
 
 ```bash
 git add src/snippets.ts src/builtin-snippets tests/snippet-registry.test.ts vitest.config.ts
