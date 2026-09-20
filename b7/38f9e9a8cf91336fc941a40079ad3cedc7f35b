@@ -1,0 +1,16 @@
+src/settings.ts
+  h_d9088715075e51 101-116,159,174
+tests/settings.test.ts
+  h_d9088715075e51 58-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b738f9e9a8cf91336fc941a40079ad3cedc7f35b",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
