@@ -69,4 +69,26 @@ describe("mergeSettings", () => {
     merged.recentFiles.push({ path: "leak.md", timestamp: 1 });
     expect(DEFAULT_SETTINGS.recentFiles).toHaveLength(0);
   });
+
+  it("rejects an unknown string for a union field", () => {
+    expect(mergeSettings({ logoType: "bogus" }).logoType).toBe(DEFAULT_SETTINGS.logoType);
+    expect(mergeSettings({ backgroundType: "bogus" }).backgroundType).toBe(
+      DEFAULT_SETTINGS.backgroundType,
+    );
+  });
+
+  it("rejects a wrong-typed string field", () => {
+    expect(mergeSettings({ dashboardFile: 42 }).dashboardFile).toBe(DEFAULT_SETTINGS.dashboardFile);
+  });
+
+  it("rejects a non-finite number", () => {
+    expect(mergeSettings({ logoScale: Number.POSITIVE_INFINITY }).logoScale).toBe(
+      DEFAULT_SETTINGS.logoScale,
+    );
+    expect(mergeSettings({ logoScale: Number.NaN }).logoScale).toBe(DEFAULT_SETTINGS.logoScale);
+  });
+
+  it("rejects a non-array recent files value", () => {
+    expect(mergeSettings({ recentFiles: "x" }).recentFiles).toEqual([]);
+  });
 });

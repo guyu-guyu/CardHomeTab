@@ -21,7 +21,7 @@ const context = await esbuild.context({
     js: "/* CardHomeTab - generated from TypeScript source */",
   },
   bundle: true,
-  entryPoints: ["src/main.ts"],
+  entryPoints: [path.join(projectRoot, "src/main.ts")],
   external: [
     "obsidian",
     "electron",

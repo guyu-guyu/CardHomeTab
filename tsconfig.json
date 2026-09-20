@@ -13,7 +13,7 @@
     "target": "ES2022",
     "useDefineForClassFields": true,
     "skipLibCheck": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

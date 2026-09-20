@@ -84,34 +84,25 @@ function pickBoolean(raw: RawRecord, key: string, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+type Rounder = (value: number) => number;
+
+/** 用于 slider 步长小于 1 的字段（如 logoScale 的 0.1 步长），保留一位小数 */
+const roundToOneDecimal: Rounder = (value) => Math.round(value * 10) / 10;
+
+/** 数值字段的统一入口；round 默认取整，因为整数字段（fontWeight、gridColumns 等）占多数 */
 function pickNumber(
   raw: RawRecord,
   key: string,
   fallback: number,
   minimum: number,
   maximum: number,
+  round: Rounder = Math.round,
 ): number {
   const value = raw[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
-  return Math.min(maximum, Math.max(minimum, Math.round(value)));
-}
-
-/** 用于 slider 步长小于 1 的字段（如 logoScale 的 0.1 步长），保留一位小数 */
-function pickDecimal(
-  raw: RawRecord,
-  key: string,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const value = raw[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-  const rounded = Math.round(value * 10) / 10;
-  return Math.min(maximum, Math.max(minimum, rounded));
+  return Math.min(maximum, Math.max(minimum, round(value)));
 }
 
 function pickUnion<T extends string>(
@@ -126,6 +117,7 @@ function pickUnion<T extends string>(
     : fallback;
 }
 
+/** 标题级别不做钳制：2..6 之外的整数一律回落默认值，因为它不是"可修复"的数值 */
 function pickHeadingLevel(raw: RawRecord): number {
   const value = raw["cardHeadingLevel"];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 2 || value > 6) {
@@ -171,7 +163,14 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
       DEFAULT_SETTINGS.logoType,
     ),
     logoValue: pickString(record, "logoValue", DEFAULT_SETTINGS.logoValue),
-    logoScale: pickDecimal(record, "logoScale", DEFAULT_SETTINGS.logoScale, 0.2, 5),
+    logoScale: pickNumber(
+      record,
+      "logoScale",
+      DEFAULT_SETTINGS.logoScale,
+      0.2,
+      5,
+      roundToOneDecimal,
+    ),
     logoColor: pickString(record, "logoColor", DEFAULT_SETTINGS.logoColor),
     wordmark: pickString(record, "wordmark", DEFAULT_SETTINGS.wordmark),
     showWordmark: pickBoolean(record, "showWordmark", DEFAULT_SETTINGS.showWordmark),
