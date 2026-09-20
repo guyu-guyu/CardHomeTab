@@ -674,9 +674,10 @@ describe("serializeCardMeta", () => {
 });
 
 describe("isAutoCss / isDefaultMeta", () => {
-  it("detects the auto marker", () => {
+  it("detects the auto marker wherever it appears", () => {
     expect(isAutoCss(parseCardMeta("%%card: css=auto%%")!)).toBe(true);
-    expect(isAutoCss(parseCardMeta("%%card: css=auto,text%%")!)).toBe(false);
+    expect(isAutoCss(parseCardMeta("%%card: css=auto,text%%")!)).toBe(true);
+    expect(isAutoCss(parseCardMeta("%%card: css=text,auto%%")!)).toBe(true);
     expect(isAutoCss(DEFAULT_CARD_META)).toBe(false);
   });
 
@@ -778,7 +779,7 @@ export function serializeCardMeta(meta: CardMeta): string {
 }
 
 export function isAutoCss(meta: CardMeta): boolean {
-  return meta.css.length === 1 && meta.css[0] === AUTO_CSS;
+  return meta.css.includes(AUTO_CSS);
 }
 
 export function isDefaultMeta(meta: CardMeta): boolean {
@@ -787,6 +788,8 @@ export function isDefaultMeta(meta: CardMeta): boolean {
   );
 }
 ```
+
+`isAutoCss` 问的是"这张卡片请求了自动检测吗"，所以判据是列表里**有没有** `auto`，而不是"是否只有 `auto`"。这两者的差别正是 Task 5 那个缺陷的根源：`resolveSnippetRefs` 曾用 `length === 1 && css[0] === "auto"` 判断，于是 `css=auto,text` 里的 `auto` 被当成片段名丢掉；修好 `resolveSnippetRefs` 之后如果 `isAutoCss` 还留着旧判据，同一个问题就会在下一处被重新引入——两处对"是不是 auto"给出相反答案。Task 14 的卡片设置弹窗可以用它来判断"自动"复选框是否勾选。
 
 - [ ] **Step 4: 运行测试确认通过**
 
