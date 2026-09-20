@@ -114,7 +114,7 @@
     "target": "ES2022",
     "useDefineForClassFields": true,
     "skipLibCheck": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]
 }
@@ -146,7 +146,7 @@ const context = await esbuild.context({
     js: "/* CardHomeTab - generated from TypeScript source */",
   },
   bundle: true,
-  entryPoints: ["src/main.ts"],
+  entryPoints: [path.join(projectRoot, "src/main.ts")],
   external: [
     "obsidian",
     "electron",
@@ -311,6 +311,28 @@ describe("mergeSettings", () => {
     merged.recentFiles.push({ path: "leak.md", timestamp: 1 });
     expect(DEFAULT_SETTINGS.recentFiles).toHaveLength(0);
   });
+
+  it("rejects an unknown string for a union field", () => {
+    expect(mergeSettings({ logoType: "bogus" }).logoType).toBe(DEFAULT_SETTINGS.logoType);
+    expect(mergeSettings({ backgroundType: "bogus" }).backgroundType).toBe(
+      DEFAULT_SETTINGS.backgroundType,
+    );
+  });
+
+  it("rejects a wrong-typed string field", () => {
+    expect(mergeSettings({ dashboardFile: 42 }).dashboardFile).toBe(DEFAULT_SETTINGS.dashboardFile);
+  });
+
+  it("rejects a non-finite number", () => {
+    expect(mergeSettings({ logoScale: Number.POSITIVE_INFINITY }).logoScale).toBe(
+      DEFAULT_SETTINGS.logoScale,
+    );
+    expect(mergeSettings({ logoScale: Number.NaN }).logoScale).toBe(DEFAULT_SETTINGS.logoScale);
+  });
+
+  it("rejects a non-array recent files value", () => {
+    expect(mergeSettings({ recentFiles: "x" }).recentFiles).toEqual([]);
+  });
 });
 ```
 
@@ -393,6 +415,11 @@ export const DEFAULT_SETTINGS: CardHomeTabSettings = {
 
 type RawRecord = Record<string, unknown>;
 
+type Rounder = (value: number) => number;
+
+/** 用于 slider 步长小于 1 的字段（如 logoScale 的 0.1 步长），保留一位小数 */
+const roundToOneDecimal: Rounder = (value) => Math.round(value * 10) / 10;
+
 function asRecord(value: unknown): RawRecord | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
@@ -416,28 +443,13 @@ function pickNumber(
   fallback: number,
   minimum: number,
   maximum: number,
+  round: Rounder = Math.round,
 ): number {
   const value = raw[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
-  return Math.min(maximum, Math.max(minimum, Math.round(value)));
-}
-
-/** 用于 slider 步长小于 1 的字段（如 logoScale 的 0.1 步长），保留一位小数 */
-function pickDecimal(
-  raw: RawRecord,
-  key: string,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const value = raw[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-  const rounded = Math.round(value * 10) / 10;
-  return Math.min(maximum, Math.max(minimum, rounded));
+  return Math.min(maximum, Math.max(minimum, round(value)));
 }
 
 function pickUnion<T extends string>(
@@ -452,6 +464,7 @@ function pickUnion<T extends string>(
     : fallback;
 }
 
+/** 标题级别不做钳制：2..6 之外的整数一律回落默认值，因为它不是"可修复"的数值 */
 function pickHeadingLevel(raw: RawRecord): number {
   const value = raw["cardHeadingLevel"];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 2 || value > 6) {
@@ -497,7 +510,7 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
       DEFAULT_SETTINGS.logoType,
     ),
     logoValue: pickString(record, "logoValue", DEFAULT_SETTINGS.logoValue),
-    logoScale: pickDecimal(record, "logoScale", DEFAULT_SETTINGS.logoScale, 0.2, 5),
+    logoScale: pickNumber(record, "logoScale", DEFAULT_SETTINGS.logoScale, 0.2, 5, roundToOneDecimal),
     logoColor: pickString(record, "logoColor", DEFAULT_SETTINGS.logoColor),
     wordmark: pickString(record, "wordmark", DEFAULT_SETTINGS.wordmark),
     showWordmark: pickBoolean(record, "showWordmark", DEFAULT_SETTINGS.showWordmark),
@@ -529,7 +542,7 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
 - [ ] **Step 5: 运行测试确认通过**
 
 Run: `npx vitest run tests/settings.test.ts`
-Expected: PASS，10 个用例。
+Expected: PASS，14 个用例。
 
 - [ ] **Step 6: 跑通完整检查并提交**
 
@@ -4718,6 +4731,16 @@ jobs:
 
 Run: `npm ci && npm run check`
 Expected: 全部通过。
+
+在加 CI 之前先确认锁文件能在公共 runner 上安装。`package-lock.json` 里每一条 `"resolved"` 的 host 必须都是 `registry.npmjs.org`；如果本机 npm 配了内网镜像（如 `mirrors.tencent.com/npm`），`npm install` 生成的锁文件会把 394 条 `resolved` 全指向内网，GitHub 的 `ubuntu-latest` 拉不到包、`npm ci` 直接失败。检查方式：
+
+```bash
+grep -c '"resolved"' package-lock.json
+grep -c '"resolved": "https://registry.npmjs.org' package-lock.json
+grep -c 'mirrors\.' package-lock.json
+```
+
+三个数字应当是「总数 / 总数 / 0」。不满足就删掉 `node_modules` 与 `package-lock.json`，用 `npm install --registry=https://registry.npmjs.org` 重新生成，再跑一次 `npm ci` 确认。
 
 Run: `npm run build && ls dist`
 Expected: `main.js` `manifest.json` `styles.css` 三个文件。
