@@ -2356,7 +2356,7 @@ describe("parseSnippetRef", () => {
 describe("SnippetRegistry.read", () => {
   // `builtin:` 的读取不碰 adapter，所以这里可以只喂一个最小 stub。
   const registry = () =>
-    new SnippetRegistry({ vault: { configDir: ".obsidian" } } as unknown as App);
+    new SnippetRegistry({ vault: { configDir: ".vault-config" } } as unknown as App);
 
   it("does not resolve inherited object properties as builtin snippets", async () => {
     const snippets = registry();
@@ -2367,13 +2367,37 @@ describe("SnippetRegistry.read", () => {
   });
 
   it("refuses a user reference that would escape the snippets directory", async () => {
-    const snippets = registry();
+    const requested: string[] = [];
+    const app = {
+      vault: {
+        configDir: ".vault-config",
+        adapter: {
+          stat: (path: string) => {
+            requested.push(path);
+            return Promise.resolve({ mtime: 0 });
+          },
+          read: (path: string) => {
+            requested.push(path);
+            return Promise.resolve("LEAK");
+          },
+        },
+      },
+    } as unknown as App;
+
+    const snippets = new SnippetRegistry(app);
     await expect(snippets.read("user:../../secret")).resolves.toBeNull();
     await expect(snippets.read("user:sub/name")).resolves.toBeNull();
     await expect(snippets.read("user:..")).resolves.toBeNull();
+    // 关键断言：守卫拦下时根本不该去碰 adapter。
+    expect(requested).toEqual([]);
   });
 });
 ```
+
+两个测试的写法有讲究：
+
+- 第二个测试**必须挂一个会记录路径的 adapter**，否则它是一片装饰。只用 `{ vault: { configDir } }` 这种最小 stub 时，没有 adapter 会让 `stat` 直接抛进 `catch`，返回值同样是 `null`——把守卫整段删掉测试依然全绿，起不到任何作用。`requested` 为空数组这一条才是真正在钉"守卫在碰到文件系统之前就返回了"。
+- stub 里用 `.vault-config` 而不是 `.obsidian`：`obsidianmd/hardcoded-config-path` 规则会拦下硬编码的配置目录名，而 `--max-warnings 0` 下这是失败。生产代码用的是 `this.app.vault.configDir`，本来就正确，只有测试 stub 需要注意。
 
 - [ ] **Step 3: 运行测试确认失败**
 
