@@ -2190,12 +2190,14 @@ git commit -m "feat: 用 @scope 把 CSS 片段隔离到单张卡片"
   font-size: var(--font-ui-small);
 }
 
-.home-card-content .search-result-file-path,
-.home-card-content .search-result-file-match {
+.home-card-content .search-result-file-title,
+.home-card-content .search-result-file-matches {
   font-size: var(--font-ui-smaller);
   opacity: 0.75;
 }
 ```
+
+`query.css` 里不要写 `.search-result-file-path`：在 `obsidian.asar` 里它的出现次数是 **0**，Obsidian 从不发出这个类。真实存在的是 `.search-result-file-title`（2 次）、`.search-result-file-matches`（3 次）、`.search-result-file-match`（11 次）。早先把 `-path` 记为"已核实"是错的——那个字符串来自 `.obsidian/plugins` 下第三方插件自己的 CSS，不是 Obsidian 本体。同理，`.block-language-query` 在本体里出现 0 次，这个文件的注释说的没错。
 
 `src/builtin-snippets/dataview.css`：
 
@@ -2256,8 +2258,30 @@ git commit -m "feat: 用 @scope 把 CSS 片段隔离到单张卡片"
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { BUILTIN_SNIPPETS, parseSnippetRef } from "../src/snippets";
+import type { App } from "obsidian";
+import { BUILTIN_SNIPPETS, parseSnippetRef, SnippetRegistry } from "../src/snippets";
 import { BUILTIN_SNIPPET_NAMES } from "../src/auto-snippets";
+
+/**
+ * 取出样式表里所有选择器。按行取会漏掉逗号续行（`.a,\n.b {` 里的 `.a`），
+ * 实测五个片段里共有 11 行这样的续行，`base.css` 的第一个选择器就是其中之一——
+ * 漏掉它们会让下面的"每个选择器都限定在卡片内"断言出现盲区。
+ */
+function selectorsOf(css: string): string[] {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const found: string[] = [];
+  const pattern = /([^{}]+)\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(withoutComments)) !== null) {
+    for (const part of (match[1] ?? "").split(",")) {
+      const selector = part.trim().replace(/\s+/g, " ");
+      if (selector.length > 0 && !selector.startsWith("@")) {
+        found.push(selector);
+      }
+    }
+  }
+  return found;
+}
 
 describe("BUILTIN_SNIPPETS", () => {
   it("ships a stylesheet for every builtin name", () => {
@@ -2279,24 +2303,24 @@ describe("BUILTIN_SNIPPETS", () => {
     expect(BUILTIN_SNIPPETS["text"]).toContain(".markdown-rendered");
   });
 
-  it("never relies on .block-language-query, which Obsidian does not emit", () => {
+  it("never styles .block-language-query, which Obsidian does not emit", () => {
     // 只在选择器上断言：query.css 的注释里正当地提到了这个类名（就是为了说明它不存在），
     // 对整段 CSS 文本做子串匹配会把那句警告本身判成违规。
-    const selectors = (BUILTIN_SNIPPETS["query"] ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.endsWith("{") && !line.startsWith("@"));
-    for (const selector of selectors) {
+    for (const selector of selectorsOf(BUILTIN_SNIPPETS["query"] ?? "")) {
       expect(selector, `query must not style ${selector}`).not.toContain(".block-language-query");
+    }
+  });
+
+  it("never styles .search-result-file-path, which Obsidian does not emit", () => {
+    for (const selector of selectorsOf(BUILTIN_SNIPPETS["query"] ?? "")) {
+      expect(selector, `query must not style ${selector}`).not.toContain(".search-result-file-path");
     }
   });
 
   it("scopes every rule to the card content container", () => {
     for (const [name, css] of Object.entries(BUILTIN_SNIPPETS)) {
-      const selectors = css
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.endsWith("{") && !line.startsWith("@"));
+      const selectors = selectorsOf(css);
+      expect(selectors.length, `${name} produced no selectors`).toBeGreaterThan(0);
       for (const selector of selectors) {
         expect(selector, `${name} leaks outside the card: ${selector}`).toContain(
           ".home-card-content",
@@ -2326,6 +2350,27 @@ describe("parseSnippetRef", () => {
     expect(parseSnippetRef("user:")).toBeNull();
     expect(parseSnippetRef("builtin:")).toBeNull();
     expect(parseSnippetRef("other:mine")).toBeNull();
+  });
+});
+
+describe("SnippetRegistry.read", () => {
+  // `builtin:` 的读取不碰 adapter，所以这里可以只喂一个最小 stub。
+  const registry = () =>
+    new SnippetRegistry({ vault: { configDir: ".obsidian" } } as unknown as App);
+
+  it("does not resolve inherited object properties as builtin snippets", async () => {
+    const snippets = registry();
+    await expect(snippets.read("builtin:constructor")).resolves.toBeNull();
+    await expect(snippets.read("builtin:toString")).resolves.toBeNull();
+    await expect(snippets.read("builtin:hasOwnProperty")).resolves.toBeNull();
+    await expect(snippets.read("builtin:base")).resolves.toContain(".bases-view");
+  });
+
+  it("refuses a user reference that would escape the snippets directory", async () => {
+    const snippets = registry();
+    await expect(snippets.read("user:../../secret")).resolves.toBeNull();
+    await expect(snippets.read("user:sub/name")).resolves.toBeNull();
+    await expect(snippets.read("user:..")).resolves.toBeNull();
   });
 });
 ```
@@ -2389,6 +2434,11 @@ interface CacheEntry {
   css: string;
 }
 
+/** 片段名会被拼进文件路径，拒绝分隔符与上级引用，避免 `user:../../x` 读到 snippets 目录之外 */
+function isSafeSnippetName(name: string): boolean {
+  return !name.includes("/") && !name.includes("\\") && !name.includes("..");
+}
+
 export class SnippetRegistry {
   private readonly app: App;
   private userNames: string[] | null = null;
@@ -2443,7 +2493,12 @@ export class SnippetRegistry {
       return null;
     }
     if (parsed.source === "builtin") {
-      return BUILTIN_SNIPPETS[parsed.name] ?? null;
+      return Object.hasOwn(BUILTIN_SNIPPETS, parsed.name)
+        ? (BUILTIN_SNIPPETS[parsed.name] ?? null)
+        : null;
+    }
+    if (!isSafeSnippetName(parsed.name)) {
+      return null;
     }
     const path = `${this.directory}/${parsed.name}.css`;
     try {
@@ -2537,7 +2592,12 @@ export default defineConfig({
 - [ ] **Step 7: 运行测试确认通过**
 
 Run: `npx vitest run tests/snippet-registry.test.ts`
-Expected: PASS，9 个用例。
+Expected: PASS，14 个用例。
+
+`read()` 里两处守卫都不是防御性冗余：
+
+- **`Object.hasOwn`**：`BUILTIN_SNIPPETS` 是对象字面量，`BUILTIN_SNIPPETS["constructor"] ?? null` 会返回**函数**——`constructor`/`toString`/`hasOwnProperty`/`valueOf` 都从原型链上捞得到，`__proto__` 还会返回对象。它们全都不是 `null`，所以 `?? null` 拦不住，函数会一路流到 Task 10，在那里被当成字符串调用 `.split()` 而抛 `TypeError`——正好违背"解析不到的引用要静默降级"这条契约。
+- **`isSafeSnippetName`**：`parsed.name` 来自卡片元数据（Note 里手写的），会被直接拼进文件路径。`user:../../foo` 会变成 `.obsidian/snippets/../foo.css`，链条更长时能读到自己 vault 之外的文件。影响上限是"只读、且只限 `.css`"——读不到笔记正文，写不了任何东西，也没有外泄通道（CSS 无法把文件内容读进 URL）——但既然 Task 10 会把卡片里的引用喂进来，就该在这里堵住。
 
 - [ ] **Step 8: 跑通完整检查并提交**
 

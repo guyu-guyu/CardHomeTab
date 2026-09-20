@@ -85,7 +85,7 @@ Obsidian 的 CSS 片段默认全局生效。要让一个片段只作用于某张
 | 内置片段 | 目标选择器 | 作用 |
 | --- | --- | --- |
 | `builtin:base` | `.block-language-base`、`.bases-embed`、`.bases-view`、`.bases-query-container`、`.bases-header`、`.bases-table-container`、`.bases-thead`、`.bases-tr`、`.bases-td`、`.bases-list-item`、`.bases-cards-line`、`.bases-toolbar` | 卡片内嵌 base 的紧凑化：收敛外边距、表头吸顶、限高内滚、toolbar 缩小 |
-| `builtin:query` | `.internal-query-header`、`.internal-query-header-icon`、`.internal-query-header-title`、`.search-result-container`、`.search-results`、`.search-result-file-title`、`.search-result-file-path`、`.search-result-file-matches`、`.search-result-file-match` | 内置查询块的结果列表紧凑化、限高内滚、header 可隐藏 |
+| `builtin:query` | `.internal-query-header`、`.internal-query-header-icon`、`.internal-query-header-title`、`.search-result-container`、`.search-results`、`.search-result-file-title`、`.search-result-file-matches`、`.search-result-file-match` | 内置查询块的结果列表紧凑化、限高内滚、header 可隐藏 |
 | `builtin:dataview` | `.block-language-dataview`、`.block-language-dataviewjs`、`.table-view-table`、`.dataview-result-list-ul`、`.dataview.task-list-item`、`.dataview.inline-field-key`、`.dataview.inline-field-value`、`.dataview-error-box` | 表格紧凑 + 表头吸顶、任务与列表收紧、错误框缩小 |
 | `builtin:text` | 卡片内的 `.markdown-rendered` 排版 | 首末元素去外边距、标题缩放、列表缩进、表格边框收敛 |
 | `builtin:code` | `pre`、`pre > code`、`code` | 代码块限高内滚、行内代码、强制等宽字体 |
@@ -94,6 +94,8 @@ Obsidian 的 CSS 片段默认全局生效。要让一个片段只作用于某张
 
 - **`query` 没有 `.block-language-query`。** Obsidian 的渲染器把 `mermaid` 和 `query` 用 `else if` 特判，不走 `codeBlockPostProcessors` 那条 `createDiv("block-language-" + lang)` 分支，因此查询块外面只有 `code.language-query`，样式必须打在 `.internal-query-header` / `.search-result-container` 这些内部类上。
 - **`builtin:dataview` 需要装上 dataview 后实测校准。** 选择器来自 dataview 官方 `styles.css`，但代码块的实际包法没有在无 dataview 的环境里验证过。
+
+上表列的是**相关选择器全集**，实际随插件发布的片段只用了其中的一个子集（够实现"作用"那一列描述的效果即可）。核对这些类名时要认准 `obsidian.asar`：`.obsidian/plugins` 下第三方插件自己的 CSS 会出现 Obsidian 本体并不发出的类名（例如 `.search-result-file-path`，本体里出现 0 次），照抄会写出永不生效的规则。
 
 `css=auto` 表示按卡片正文里实际出现的内容类型自动套用对应的内置片段（有 base 块就套 `builtin:base`，有 query 就套 `builtin:query`，依此类推）。自动检测只识别围栏代码块的语言标记与 `.base` 嵌入，不做 DOM 探测。
 
