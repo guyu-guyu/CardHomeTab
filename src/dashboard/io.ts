@@ -1,6 +1,9 @@
 import { TFile, type App, type Vault } from "obsidian";
 import type { CardHomeTabSettings } from "../settings";
 import { parseDashboard, type CardSection } from "./parse";
+import { normalizeVaultPath } from "../vault-path";
+
+const FALLBACK_PATH = "Home.md";
 
 export class DashboardStore {
   private readonly app: App;
@@ -12,7 +15,7 @@ export class DashboardStore {
   }
 
   get path(): string {
-    return this.getSettings().dashboardFile.trim() || "Home.md";
+    return normalizeVaultPath(this.getSettings().dashboardFile) || FALLBACK_PATH;
   }
 
   get file(): TFile | null {
