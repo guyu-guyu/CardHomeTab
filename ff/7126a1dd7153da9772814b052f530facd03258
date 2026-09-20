@@ -1,0 +1,16 @@
+src/dashboard/parse.ts
+  h_d9088715075e51 20-24,30,35
+tests/parse.test.ts
+  h_d9088715075e51 139-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ff7126a1dd7153da9772814b052f530facd03258",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
