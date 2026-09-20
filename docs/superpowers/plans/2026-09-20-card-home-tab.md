@@ -1127,7 +1127,8 @@ function toLines(text: string): Line[] {
   return lines;
 }
 
-function headingMatch(line: string): { level: number; title: string } | null {  const match = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/.exec(line);
+function headingMatch(line: string): { level: number; title: string } | null {
+  const match = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/.exec(line);
   if (!match) {
     return null;
   }
