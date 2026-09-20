@@ -148,6 +148,14 @@ describe("moveCard", () => {
     const sections = parseDashboard(crlf, 2);
     expect(moveCard(crlf, sections, 0, 1)).toBe("## 乙\r\n正文乙\r\n## 甲\r\n正文甲\r\n");
   });
+
+  it("keeps page-level text that sits between two cards", () => {
+    const text = "## 甲\n甲内容\n# 中断\n页级正文\n## 乙\n乙内容\n";
+    const sections = parseDashboard(text, 2);
+    expect(moveCard(text, sections, 0, 1)).toBe(
+      "## 乙\n乙内容\n# 中断\n页级正文\n## 甲\n甲内容\n",
+    );
+  });
 });
 
 describe("appendCard", () => {

@@ -34,9 +34,14 @@ export function moveCard(text: string, sections: CardSection[], from: number, to
   });
   const moved = blocks.splice(from, 1)[0]!;
   blocks.splice(to, 0, moved);
-  const head = text.slice(0, ordered[0]!.start);
-  const tail = text.slice(ordered[ordered.length - 1]!.end);
-  return head + blocks.join("") + tail;
+  let result = "";
+  let cursor = 0;
+  for (let i = 0; i < ordered.length; i++) {
+    const section = ordered[i]!;
+    result += text.slice(cursor, section.start) + blocks[i]!;
+    cursor = section.end;
+  }
+  return result + text.slice(cursor);
 }
 
 export function appendCard(
