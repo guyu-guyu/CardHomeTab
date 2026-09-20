@@ -1,0 +1,16 @@
+src/dashboard/edit.ts
+  h_d9088715075e51 37-44
+tests/edit.test.ts
+  h_d9088715075e51 151-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cdf7aee2d3bda7cc0ce8c4c7755f3c2c9f7ba858",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
