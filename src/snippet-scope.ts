@@ -4,7 +4,7 @@ export function cardScopeSelector(cardId: string): string {
 
 const IMPORT_PATTERN = /@import\b/i;
 const COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
-const ROOT_PATTERN = /(^|[{};,])(\s*):root\b/g;
+const ROOT_PATTERN = /(^|[{};,]|\*\/)(\s*):root\b/g;
 
 function stripComments(css: string): string {
   return css.replace(COMMENT_PATTERN, " ");

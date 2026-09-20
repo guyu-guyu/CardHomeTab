@@ -48,6 +48,17 @@ describe("scopeSnippet", () => {
     expect(result).toContain('content: ":root"');
   });
 
+  it("rewrites :root that follows a comment", () => {
+    const result = scopeSnippet("/* 卡片配色 */\n:root { --x: 1; }", "card-1");
+    expect(result).toContain(":scope { --x: 1; }");
+    expect(result).not.toContain(":root");
+  });
+
+  it("still leaves a :root inside a declaration value alone when a comment precedes it", () => {
+    const result = scopeSnippet('/* c */ .a { content: ":root"; }', "card-1");
+    expect(result).toContain('content: ":root"');
+  });
+
   it("keeps at-rules that are legal inside @scope", () => {
     const result = scopeSnippet("@media (min-width: 600px) { .a { color: red; } }", "card-1");
     expect(result).toContain("@media (min-width: 600px)");
