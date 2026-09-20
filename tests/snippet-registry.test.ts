@@ -94,6 +94,9 @@ describe("parseSnippetRef", () => {
   });
 });
 
+// 路径穿越那一条必须喂会记录路径的 adapter stub，而 builtin 那一条不必：
+// `builtin:` 的读取根本不碰 adapter，`user:` 的读取才会，所以只有记录型 adapter 才能把
+// "守卫拦下了" 和 "读取本来就会失败" 区分开。
 describe("SnippetRegistry.read", () => {
   // `builtin:` 的读取不碰 adapter，所以这里可以只喂一个最小 stub；
   // 配置文件目录字面量走不了 obsidianmd/hardcoded-config-path，故用中性值。
@@ -109,9 +112,28 @@ describe("SnippetRegistry.read", () => {
   });
 
   it("refuses a user reference that would escape the snippets directory", async () => {
-    const snippets = registry();
+    const requested: string[] = [];
+    const app = {
+      vault: {
+        configDir: ".vault-config",
+        adapter: {
+          stat: (path: string) => {
+            requested.push(path);
+            return Promise.resolve({ mtime: 0 });
+          },
+          read: (path: string) => {
+            requested.push(path);
+            return Promise.resolve("LEAK");
+          },
+        },
+      },
+    } as unknown as App;
+
+    const snippets = new SnippetRegistry(app);
     await expect(snippets.read("user:../../secret")).resolves.toBeNull();
     await expect(snippets.read("user:sub/name")).resolves.toBeNull();
     await expect(snippets.read("user:..")).resolves.toBeNull();
+    // 关键断言：守卫拦下时根本不该去碰 adapter。
+    expect(requested).toEqual([]);
   });
 });
