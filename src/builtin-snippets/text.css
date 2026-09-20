@@ -1,0 +1,36 @@
+/* 卡片内普通 Markdown 排版收敛 */
+.home-card-content .markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+.home-card-content .markdown-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+.home-card-content .markdown-rendered p {
+  margin-block: 0.4em;
+}
+
+.home-card-content .markdown-rendered h1,
+.home-card-content .markdown-rendered h2,
+.home-card-content .markdown-rendered h3,
+.home-card-content .markdown-rendered h4 {
+  margin-block: 0.6em 0.35em;
+  font-size: 1.15em;
+}
+
+.home-card-content .markdown-rendered ul,
+.home-card-content .markdown-rendered ol {
+  padding-inline-start: 1.3em;
+  margin-block: 0.3em;
+}
+
+.home-card-content .markdown-rendered table {
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.home-card-content .markdown-rendered th,
+.home-card-content .markdown-rendered td {
+  padding: 0.3em 0.6em;
+}
