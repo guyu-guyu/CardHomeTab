@@ -85,4 +85,26 @@ describe("resolveSnippetRefs", () => {
   it("returns nothing when css is empty", () => {
     expect(resolveSnippetRefs(meta("%%card:%%"), "```base\n```")).toEqual([]);
   });
+
+  it("expands auto wherever it appears and keeps the other references", () => {
+    expect(resolveSnippetRefs(meta("%%card: css=auto,user:mine%%"), "```base\n```")).toEqual([
+      "builtin:text",
+      "builtin:code",
+      "builtin:base",
+      "user:mine",
+    ]);
+    expect(resolveSnippetRefs(meta("%%card: css=user:mine,auto%%"), "```base\n```")).toEqual([
+      "user:mine",
+      "builtin:text",
+      "builtin:code",
+      "builtin:base",
+    ]);
+  });
+
+  it("does not emit the same reference twice", () => {
+    expect(resolveSnippetRefs(meta("%%card: css=auto,text%%"), "")).toEqual(["builtin:text"]);
+    expect(resolveSnippetRefs(meta("%%card: css=base,builtin:base%%"), "")).toEqual([
+      "builtin:base",
+    ]);
+  });
 });

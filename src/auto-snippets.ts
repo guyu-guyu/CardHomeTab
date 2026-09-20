@@ -1,5 +1,5 @@
 import { isFenceClosing, matchFenceOpening, type Fence } from "./fences";
-import { isAutoCss, type CardMeta } from "./dashboard/metadata";
+import { AUTO_CSS, type CardMeta } from "./dashboard/metadata";
 
 export const BUILTIN_SNIPPET_NAMES = ["code", "base", "query", "dataview", "text"] as const;
 
@@ -48,8 +48,22 @@ export function resolveSnippetRefs(meta: CardMeta, markdown: string): string[] {
   if (meta.css.length === 0) {
     return [];
   }
-  if (isAutoCss(meta)) {
-    return detectContentSnippets(markdown).map((name) => `builtin:${name}`);
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  const push = (ref: string): void => {
+    if (!seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  };
+  for (const entry of meta.css) {
+    if (entry === AUTO_CSS) {
+      for (const name of detectContentSnippets(markdown)) {
+        push(`builtin:${name}`);
+      }
+      continue;
+    }
+    push(entry.includes(":") ? entry : `builtin:${entry}`);
   }
-  return meta.css.map((ref) => (ref.includes(":") ? ref : `builtin:${ref}`));
+  return refs;
 }
