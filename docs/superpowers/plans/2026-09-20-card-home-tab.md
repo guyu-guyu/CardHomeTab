@@ -2018,7 +2018,7 @@ export function scopeSnippet(css: string, cardId: string): string {
   return `@scope (${cardScopeSelector(cardId)}) {\n${rewriteRoot(trimmed)}\n}`;
 }
 
-/** 标签只用于 devtools 里辨认来源，把非安全字符替换掉，避免 ref 里的 `*/` 把自己的注释提前闭合 */
+/** 标签只用于 devtools 里辨认来源；把非安全字符换掉，避免 ref 里的注释结束符提前闭合标签 */
 function labelFor(ref: string): string {
   return ref.replace(/[^\w:.-]/g, "_");
 }
