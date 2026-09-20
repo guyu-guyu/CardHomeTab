@@ -54,6 +54,14 @@ describe("updateCardMeta", () => {
     const next = updateCardMeta(text, sections[1]!, meta("%%card: css=new; span=2%%"));
     expect(next).toBe(text.replace("%%card: css=old%%", "%%card: css=new; span=2%%"));
   });
+
+  it("does not weld the metadata line onto a heading that ends the file", () => {
+    const text = "## 卡";
+    const section = parseDashboard(text, 2)[0]!;
+    expect(updateCardMeta(text, section, meta("%%card: css=base%%"))).toBe(
+      "## 卡\n%%card: css=base%%\n",
+    );
+  });
 });
 
 describe("removeCard", () => {
@@ -154,6 +162,14 @@ describe("moveCard", () => {
     const sections = parseDashboard(text, 2);
     expect(moveCard(text, sections, 0, 1)).toBe(
       "## 乙\n乙内容\n# 中断\n页级正文\n## 甲\n甲内容\n",
+    );
+  });
+
+  it("keeps page-level text that follows the last card", () => {
+    const text = "## 甲\n甲内容\n## 乙\n乙内容\n# 尾题\n尾正文\n";
+    const sections = parseDashboard(text, 2);
+    expect(moveCard(text, sections, 0, 1)).toBe(
+      "## 乙\n乙内容\n## 甲\n甲内容\n# 尾题\n尾正文\n",
     );
   });
 });

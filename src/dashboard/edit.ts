@@ -16,7 +16,10 @@ export function updateCardMeta(text: string, section: CardSection, meta: CardMet
   if (line.length === 0) {
     return text;
   }
-  return text.slice(0, section.bodyStart) + line + text.slice(section.bodyStart);
+  const needsSeparator =
+    section.bodyStart > 0 && !text.startsWith(NEWLINE, section.bodyStart - 1);
+  const separator = needsSeparator ? NEWLINE : "";
+  return text.slice(0, section.bodyStart) + separator + line + text.slice(section.bodyStart);
 }
 
 export function removeCard(text: string, section: CardSection): string {
@@ -36,6 +39,10 @@ export function moveCard(text: string, sections: CardSection[], from: number, to
   blocks.splice(to, 0, moved);
   let result = "";
   let cursor = 0;
+  // 按原 start/end 槽位回写，而不是把 blocks 直接拼接：卡片之间可能夹着不属于任何卡片的
+  // 页级正文（例如文档中间的一级标题及其正文），这些字节不在任何 section 的 [start, end) 里。
+  // 用 head + blocks.join("") + tail 重组会把它们整段删掉且没有任何报错，
+  // 所以不要“简化”回拼接写法。
   for (let i = 0; i < ordered.length; i++) {
     const section = ordered[i]!;
     result += text.slice(cursor, section.start) + blocks[i]!;
