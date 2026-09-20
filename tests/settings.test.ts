@@ -55,4 +55,18 @@ describe("mergeSettings", () => {
   it("stamps the current settings version", () => {
     expect(mergeSettings({ version: 0 }).version).toBe(DEFAULT_SETTINGS.version);
   });
+
+  it("keeps fractional values for settings that are not integers", () => {
+    expect(mergeSettings({ logoScale: 1.2 }).logoScale).toBe(1.2);
+    expect(mergeSettings({ logoScale: 0.25 }).logoScale).toBe(0.3);
+    expect(mergeSettings({ logoScale: 9 }).logoScale).toBe(5);
+    expect(mergeSettings({ logoScale: 0 }).logoScale).toBe(0.2);
+  });
+
+  it("does not alias the shared defaults array", () => {
+    const merged = mergeSettings(undefined);
+    expect(merged.recentFiles).not.toBe(DEFAULT_SETTINGS.recentFiles);
+    merged.recentFiles.push({ path: "leak.md", timestamp: 1 });
+    expect(DEFAULT_SETTINGS.recentFiles).toHaveLength(0);
+  });
 });
