@@ -1,0 +1,26 @@
+{
+  "name": "obsidian-card-home-tab",
+  "version": "0.1.0",
+  "description": "A start page with user-defined cards for Obsidian.",
+  "main": "dist/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests --max-warnings 0",
+    "check": "npm run test && npm run lint && npm run build"
+  },
+  "keywords": ["obsidian", "home", "dashboard", "cards"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.8.3",
+    "vitest": "^5.0.0"
+  }
+}
