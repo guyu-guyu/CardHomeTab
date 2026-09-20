@@ -59,6 +59,17 @@ describe("scopeSnippet", () => {
     expect(result).toContain('content: ":root"');
   });
 
+  it("rewrites :ROOT case-insensitively", () => {
+    const result = scopeSnippet(":ROOT { --x: 1; }", "card-1");
+    expect(result).toContain(":scope { --x: 1; }");
+    expect(result).not.toContain(":ROOT");
+  });
+
+  it("rejects a real @import that follows a leading comment", () => {
+    const result = scopeSnippet('/* 说明 */\n@import url("evil.css");\n.a { color: red; }', "card-1");
+    expect(result).toBe("");
+  });
+
   it("keeps at-rules that are legal inside @scope", () => {
     const result = scopeSnippet("@media (min-width: 600px) { .a { color: red; } }", "card-1");
     expect(result).toContain("@media (min-width: 600px)");
@@ -91,6 +102,18 @@ describe("scopedStylesheet", () => {
     expect(scopedStylesheet([{ ref: "builtin:base", css: ".b{}" }], "card-2")).toContain(
       "builtin:base",
     );
+  });
+
+  it("does not let a reference close its own label comment", () => {
+    const result = scopedStylesheet(
+      [{ ref: "x */ .evil { display: none } /*", css: ".a {}" }],
+      "card-2",
+    );
+    const label = result.slice(0, result.indexOf("\n"));
+    expect(label.startsWith("/* ")).toBe(true);
+    expect(label.endsWith(" */")).toBe(true);
+    expect(label.slice(3, -3)).not.toContain("*/");
+    expect(result).toContain(`@scope (${selector("card-2")})`);
   });
 
   it("skips parts that resolve to an empty snippet", () => {
