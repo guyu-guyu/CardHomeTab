@@ -93,9 +93,10 @@ describe("serializeCardMeta", () => {
 });
 
 describe("isAutoCss / isDefaultMeta", () => {
-  it("detects the auto marker", () => {
+  it("detects the auto marker wherever it appears", () => {
     expect(isAutoCss(parseCardMeta("%%card: css=auto%%")!)).toBe(true);
-    expect(isAutoCss(parseCardMeta("%%card: css=auto,text%%")!)).toBe(false);
+    expect(isAutoCss(parseCardMeta("%%card: css=auto,text%%")!)).toBe(true);
+    expect(isAutoCss(parseCardMeta("%%card: css=text,auto%%")!)).toBe(true);
     expect(isAutoCss(DEFAULT_CARD_META)).toBe(false);
   });
 

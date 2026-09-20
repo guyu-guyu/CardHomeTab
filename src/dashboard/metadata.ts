@@ -79,7 +79,7 @@ export function serializeCardMeta(meta: CardMeta): string {
 }
 
 export function isAutoCss(meta: CardMeta): boolean {
-  return meta.css.length === 1 && meta.css[0] === AUTO_CSS;
+  return meta.css.includes(AUTO_CSS);
 }
 
 export function isDefaultMeta(meta: CardMeta): boolean {
