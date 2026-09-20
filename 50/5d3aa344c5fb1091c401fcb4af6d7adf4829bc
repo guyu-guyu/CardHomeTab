@@ -1,0 +1,18 @@
+src/builtin-snippets/query.css
+  h_d9088715075e51 20-21
+src/snippets.ts
+  h_d9088715075e51 51-55,110-115
+tests/snippet-registry.test.ts
+  h_d9088715075e51 2-3,6-26,50,55-60,63-64,96-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "505d3aa344c5fb1091c401fcb4af6d7adf4829bc",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
