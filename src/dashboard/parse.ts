@@ -17,17 +17,22 @@ interface Line {
   end: number;
 }
 
+// 匹配用的 line.text 会剥掉行尾的 \r：JS 正则的 `.` 不匹配 \r（它是行终止符），
+// 所以 "## 甲\r" 会让 /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/ 永远到不了 $，
+// headingMatch 返回 null，整篇 CRLF 文档会一张卡片都解析不出来（且完全静默）。
+// 不要“简化”掉这里的 replace —— 它只清洗匹配文本，start/end 仍指向原文，
+// 保证 sectionBody 等按偏移切片的地方依旧返回带 \r\n 的原字节。
 function toLines(text: string): Line[] {
   const lines: Line[] = [];
   let start = 0;
   for (let i = 0; i < text.length; i++) {
     if (text.charCodeAt(i) === 10) {
-      lines.push({ text: text.slice(start, i), start, end: i + 1 });
+      lines.push({ text: text.slice(start, i).replace(/\r$/, ""), start, end: i + 1 });
       start = i + 1;
     }
   }
   if (start < text.length) {
-    lines.push({ text: text.slice(start), start, end: text.length });
+    lines.push({ text: text.slice(start).replace(/\r$/, ""), start, end: text.length });
   }
   return lines;
 }

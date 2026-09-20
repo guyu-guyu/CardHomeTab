@@ -136,4 +136,11 @@ describe("parseDashboard", () => {
     expect(sections.map((s) => s.title)).toEqual(["空卡片", "下一张"]);
     expect(sectionBody(text, sections[0]!)).toBe("");
   });
+
+  it("handles CRLF line endings without losing every heading", () => {
+    const text = "## 甲\r\n正文\r\n## 乙\r\n正文\r\n";
+    const sections = parseDashboard(text, 2);
+    expect(sections.map((s) => s.title)).toEqual(["甲", "乙"]);
+    expect(sectionBody(text, sections[0]!)).toBe("正文\r\n");
+  });
 });
