@@ -1,0 +1,14 @@
+tests/snippet-registry.test.ts
+  h_d9088715075e51 97-99,115-132,136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "654ec2fa1903bfee15861f6f48f204f0180d9eba",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
