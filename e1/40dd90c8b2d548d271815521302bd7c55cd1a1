@@ -1,0 +1,16 @@
+src/snippet-scope.ts
+  h_d9088715075e51 7,38-42,48
+tests/snippet-scope.test.ts
+  h_d9088715075e51 62-72,107-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e140dd90c8b2d548d271815521302bd7c55cd1a1",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
