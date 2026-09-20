@@ -1,0 +1,16 @@
+.gitignore
+  h_d9088715075e51 1-7
+docs/superpowers/specs/2026-09-20-card-home-tab-design.md
+  h_d9088715075e51 1-317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9813201d21f9d9697bc1c2cf67ec85e707c65f4d",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
