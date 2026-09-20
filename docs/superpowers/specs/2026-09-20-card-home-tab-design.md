@@ -50,7 +50,7 @@
 
 - 单一数据源，配置跟着 section 走：标题改名、拖拽移动都不会丢配置，因此**卡片不需要稳定 id**（运行时生成临时 id 即可满足 DOM 与 CSS 作用域的需要）。
 - `%% %%` 是 Obsidian 原生注释语法。写在 section 内部而不是标题行里，避免污染标题——标题行里插标记会扭曲大纲面板、搜索结果和反链中显示的标题文字。
-- 由首页的「卡片设置」popover 自动生成，用户也可以手写。
+- 由首页的「卡片设置」弹窗自动生成，用户也可以手写。
 
 ### 决策 3：CSS 片段用 `@scope` 做作用域隔离
 
@@ -214,7 +214,7 @@ interface CardHomeTabSettings {
 | 操作 | 行为 |
 | --- | --- |
 | 拖拽手柄 | 移动 section |
-| 卡片设置 | popover：图标、css 片段（内置 + 用户，多选）、跨列数 → 写回 `%%card:%%` 注释并重渲染该卡 |
+| 卡片设置 | 弹窗：图标、css 片段（内置 + 用户，多选）、跨列数 → 写回 `%%card:%%` 注释并重渲染该卡 |
 | 编辑 | 打开仪表盘笔记并定位到该 section 的标题行 |
 | 删除 | 移除该 section（二次确认） |
 
@@ -266,7 +266,7 @@ interface CardHomeTabSettings {
 | `src/search-bar.ts` | 搜索框与建议 |
 | `src/card-grid.ts` | 网格布局与拖拽排序 |
 | `src/card.ts` | 单卡片 DOM、Markdown 渲染、操作条 |
-| `src/card-settings.ts` | 卡片设置 popover |
+| `src/card-settings.ts` | 卡片设置弹窗 |
 | `src/snippets.ts` | 片段发现与读取 |
 | `src/snippet-scope.ts` | `@scope` 包裹与预处理 |
 | `src/builtin-snippets/*.css` | 内置片段源码 |
@@ -301,7 +301,7 @@ DOM 渲染与 Obsidian 交互不做单测。
 2. 卡片内纯文本、代码块、```` ```query ````、```` ```base ````、```` ```dataview ```` 均正确渲染（dataview 需安装对应插件）。
 3. 卡片内 `![[某表.base]]`、`![[图片.png]]`、相对链接按仪表盘笔记的目录正确解析。
 4. 给一张卡片加 `%%card: css=base%%`，样式只作用于该卡，不影响其他卡片与全局样式；卡片内其他元素不受影响。
-5. 在卡片设置 popover 里改片段、跨列数、图标后，文件被正确改写，且其余 section 的文本逐字节未变。
+5. 在卡片设置弹窗里改片段、跨列数、图标后，文件被正确改写，且其余 section 的文本逐字节未变。
 6. 拖拽排序后，文件里的 section 顺序确实发生变化。
 7. 在标签页里手写编辑仪表盘文件，首页卡片实时更新。
 8. 关闭并重开首页视图，配置与渲染结果一致。
