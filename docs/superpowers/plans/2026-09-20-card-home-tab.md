@@ -1252,7 +1252,7 @@ Expected: PASS，20 个用例。
 - [ ] **Step 9: 跑全量测试并提交**
 
 Run: `npm test`
-Expected: `tests/fences.test.ts` 9 个 + `tests/parse.test.ts` 19 个 + 之前的用例全部通过。
+Expected: `tests/fences.test.ts` 9 个 + `tests/parse.test.ts` 20 个 + 之前的用例全部通过。
 
 ```bash
 git add src/fences.ts src/dashboard/parse.ts tests/fences.test.ts tests/parse.test.ts
@@ -1314,8 +1314,7 @@ describe("updateCardMeta", () => {
     );
   });
 
-  it("leaves every other card byte-identical", () => {
-    const text = [
+  it("leaves every other card byte-identical", () => {    const text = [
       "前言",
       "",
       "## 甲",
@@ -1331,6 +1330,14 @@ describe("updateCardMeta", () => {
     const sections = parseDashboard(text, 2);
     const next = updateCardMeta(text, sections[1]!, meta("%%card: css=new; span=2%%"));
     expect(next).toBe(text.replace("%%card: css=old%%", "%%card: css=new; span=2%%"));
+  });
+
+  it("does not weld the metadata line onto a heading that ends the file", () => {
+    const text = "## 卡";
+    const section = parseDashboard(text, 2)[0]!;
+    expect(updateCardMeta(text, section, meta("%%card: css=base%%"))).toBe(
+      "## 卡\n%%card: css=base%%\n",
+    );
   });
 });
 
@@ -1434,6 +1441,14 @@ describe("moveCard", () => {
       "## 乙\n乙内容\n# 中断\n页级正文\n## 甲\n甲内容\n",
     );
   });
+
+  it("keeps page-level text that follows the last card", () => {
+    const text = "## 甲\n甲内容\n## 乙\n乙内容\n# 尾题\n尾正文\n";
+    const sections = parseDashboard(text, 2);
+    expect(moveCard(text, sections, 0, 1)).toBe(
+      "## 乙\n乙内容\n## 甲\n甲内容\n# 尾题\n尾正文\n",
+    );
+  });
 });
 
 describe("appendCard", () => {
@@ -1507,7 +1522,10 @@ export function updateCardMeta(text: string, section: CardSection, meta: CardMet
   if (line.length === 0) {
     return text;
   }
-  return text.slice(0, section.bodyStart) + line + text.slice(section.bodyStart);
+  const needsSeparator =
+    section.bodyStart > 0 && !text.startsWith(NEWLINE, section.bodyStart - 1);
+  const separator = needsSeparator ? NEWLINE : "";
+  return text.slice(0, section.bodyStart) + separator + line + text.slice(section.bodyStart);
 }
 
 export function removeCard(text: string, section: CardSection): string {
@@ -1553,7 +1571,9 @@ export function appendCard(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/edit.test.ts`
-Expected: PASS，27 个用例。
+Expected: PASS，29 个用例。
+
+`updateCardMeta` 里那个 `needsSeparator` 判断不是防御性冗余：当 section 的标题行就是文件的最后一行且文件末尾没有换行时，`toLines` 给它的 `end` 等于 `text.length`，`bodyStart` 也因此等于 `text.length`，而元数据扫描根本没有下一行可看（`metaRange` 为 `null`）。此时直接 `slice(0, bodyStart) + line + slice(bodyStart)` 会把元数据行**焊在标题行上**——结果是标题变成 `卡%%card: css=base%%`，元数据整行丢失，卡片渲染时也就没有任何片段样式。加一个分隔换行即可。
 
 `moveCard` 用 `text.slice(cursor, section.start) + blocks[i]` 逐段拼回，而不是 `head + blocks.join("") + tail`。两者的差别只在"卡片之间夹着页面级文本"时显现：`parseDashboard` 让 section 终止于更高级标题，因此两个卡片之间可以存在**不属于任何 section** 的字节（例如文档中段的 `# 分区标题` 及其正文）。用 `head + join + tail` 拼会把这些字节静默丢掉——测过的例子是 10 个字节整段消失。逐段拼接把每个 section 的新内容写回它原来的位置区间，间隙一字不动。
 
