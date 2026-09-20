@@ -39,6 +39,7 @@
 | `src/snippet-scope.ts` | `@scope` 包裹与预处理 | 6 |
 | `src/builtin-snippets/*.css` | 五个内置片段源码 | 7 |
 | `src/snippets.ts` | 内置 + 用户片段发现与读取 | 7 |
+| `vitest.config.ts` | 让 vitest（Vite）把 `.css` 当文本导入 | 7 |
 | `src/dashboard/io.ts` | `vault.process` 原子写入、文件缺失处理 | 8 |
 | `src/main.ts` | 插件入口、命令、事件、视图注册 | 9 |
 | `src/home-view.ts` | 首页 `ItemView`：骨架与编排 | 9 |
@@ -2062,6 +2063,7 @@ git commit -m "feat: 用 @scope 把 CSS 片段隔离到单张卡片"
 **Files:**
 - Create: `src/builtin-snippets/text.css`, `code.css`, `base.css`, `query.css`, `dataview.css`
 - Create: `src/snippets.ts`
+- Create: `vitest.config.ts`
 - Test: `tests/snippet-registry.test.ts`
 
 **Interfaces:**
@@ -2328,7 +2330,6 @@ Expected: FAIL — 无法解析 `../src/snippets`。
 - [ ] **Step 4: 写实现**
 
 `src/snippets.ts`：
-
 ```ts
 import type { App } from "obsidian";
 import baseCss from "./builtin-snippets/base.css";
@@ -2462,15 +2463,54 @@ export class SnippetRegistry {
 }
 ```
 
-- [ ] **Step 5: 运行测试确认通过**
+- [ ] **Step 5: 运行测试，预期会失败在 CSS 导入上**
+
+Run: `npx vitest run tests/snippet-registry.test.ts`
+Expected: FAIL，但**不是**解析错误——`tests/snippet-registry.test.ts` 里 `BUILTIN_SNIPPETS[name]` 会断言失败（`undefined`）。
+
+原因是构建与测试用的不是同一套打包器：`esbuild.config.mjs` 里配的 `.css` text loader 只作用于构建产物；而测试跑在 vitest 下，也就是跑在 Vite 下，Vite 默认不把 `.css` 当文本，`import baseCss from "./builtin-snippets/base.css"` 拿到的是空模块。`dist/main.js` 里内联的 CSS 是对的，但测试看不到。
+
+- [ ] **Step 6: 加 vitest 配置，把 `.css` 当文本**
+
+`vitest.config.ts`：
+
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  plugins: [
+    {
+      name: "card-home-tab-css-as-text",
+      enforce: "pre",
+      transform(source: string, id: string) {
+        if (!id.includes(".css")) {
+          return null;
+        }
+        return `export default ${JSON.stringify(source)};`;
+      },
+    },
+  ],
+});
+```
+
+`enforce: "pre"` 是必需的——要在 Vite 自己的 CSS 插件之前拦下来。这个文件不参与 `tsc --noEmit`（`tsconfig.json` 的 `include` 只覆盖 `src/**` 与 `tests/**`），也不参与 `eslint`（脚本只扫 `src tests`），所以不需要额外的类型或 lint 配置。
+
+- [ ] **Step 7: 运行测试确认通过**
 
 Run: `npx vitest run tests/snippet-registry.test.ts`
 Expected: PASS，9 个用例。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 8: 跑通完整检查并提交**
+
+Run: `npm run check`
+Expected: 全绿，且 `dist/main.js` 里能搜到内置片段的内容（确认 esbuild 的 text loader 仍然生效）：
 
 ```bash
-git add src/snippets.ts src/builtin-snippets tests/snippet-registry.test.ts
+grep -c "home-card-content" dist/main.js
+```
+
+```bash
+git add src/snippets.ts src/builtin-snippets tests/snippet-registry.test.ts vitest.config.ts
 git commit -m "feat: 五个按内容类型分组的内置片段与片段仓库"
 ```
 
