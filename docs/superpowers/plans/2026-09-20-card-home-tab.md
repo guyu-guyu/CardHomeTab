@@ -1363,6 +1363,12 @@ describe("removeCard", () => {
     const sections = parseDashboard(text, 2);
     expect(removeCard(text, sections[0]!)).toBe("## 乙\n%%card: css=base%%\n乙内容\n");
   });
+
+  it("preserves CRLF bytes when removing a section", () => {
+    const crlf = "## 甲\r\n正文甲\r\n## 乙\r\n正文乙\r\n";
+    const sections = parseDashboard(crlf, 2);
+    expect(removeCard(crlf, sections[0]!)).toBe("## 乙\r\n正文乙\r\n");
+  });
 });
 
 describe("moveCard", () => {
@@ -1413,6 +1419,12 @@ describe("moveCard", () => {
   it("keeps the body of each card with its heading", () => {
     const sections = parseDashboard(text, 2);
     expect(moveCard(text, sections, 1, 2)).toContain("## 丙\n丙内容\n## 乙\n乙内容\n");
+  });
+
+  it("preserves CRLF bytes when moving sections", () => {
+    const crlf = "## 甲\r\n正文甲\r\n## 乙\r\n正文乙\r\n";
+    const sections = parseDashboard(crlf, 2);
+    expect(moveCard(crlf, sections, 0, 1)).toBe("## 乙\r\n正文乙\r\n## 甲\r\n正文甲\r\n");
   });
 });
 
@@ -1528,7 +1540,9 @@ export function appendCard(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/edit.test.ts`
-Expected: PASS，24 个用例。
+Expected: PASS，26 个用例。
+
+`moveCard` / `removeCard` 是纯区间拼接，必须原样保留 CRLF 字节；两条 CRLF 测试就是钉这一点。**已知限制**：`updateCardMeta` 与 `appendCard` 插入的新行固定用 `\n`，所以在 CRLF 文件里这两处会产生混合行尾。功能与解析都不受影响（`toLines` 已剥 `\r`），只是 git diff 里那一行会显得突兀。收益不足以在本版引入行尾探测，记入 README 的已知限制。
 
 - [ ] **Step 5: 提交**
 
