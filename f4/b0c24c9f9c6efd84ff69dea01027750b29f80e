@@ -1,0 +1,38 @@
+LICENSE
+  h_d9088715075e51 1-21
+esbuild.config.mjs
+  h_d9088715075e51 1-57
+eslint.config.mjs
+  h_d9088715075e51 1-15
+manifest.json
+  h_d9088715075e51 1-9
+package-lock.json
+  h_d9088715075e51 1-6012
+package.json
+  h_d9088715075e51 1-26
+src/css-modules.d.ts
+  h_d9088715075e51 1-4
+src/main.ts
+  h_d9088715075e51 1-3
+src/settings.ts
+  h_d9088715075e51 1-184
+styles.css
+  h_d9088715075e51 1
+tests/settings.test.ts
+  h_d9088715075e51 1-58
+tsconfig.json
+  h_d9088715075e51 1-19
+versions.json
+  h_d9088715075e51 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f4b0c24c9f9c6efd84ff69dea01027750b29f80e",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
