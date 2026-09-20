@@ -2154,7 +2154,6 @@ git commit -m "feat: 用 @scope 把 CSS 片段隔离到单张卡片"
 .home-card-content .bases-thead {
   position: sticky;
   top: 0;
-  z-index: 1;
   background-color: var(--background-primary);
 }
 
@@ -2616,7 +2615,9 @@ export default defineConfig({
 - [ ] **Step 7: 运行测试确认通过**
 
 Run: `npx vitest run tests/snippet-registry.test.ts`
-Expected: PASS，14 个用例。
+Expected: PASS，12 个用例。
+
+`base.css` 里**不要**给 `.bases-thead` 写 `z-index`。Obsidian 自己已经给了 `.bases-thead { position: sticky; top: 0; z-index: var(--layer-cover); … }`，而片段的 specificity 是 `(0,2,0)`、高于 `.bases-thead` 的 `(0,1,0)`（`@scope` 的邻近性是在 specificity 之后才比较的，救不回来），所以照抄一个 `1` 只会把层级**调低**——同一层叠上下文里任何 `z-index` 落在 `(1, 100]` 的元素（Base 自己的筛选浮层之类）都会盖到吸顶表头上。`position`/`top` 保留（自给自足，不依赖 Obsidian 实现），层级交回给 Obsidian。
 
 `read()` 里两处守卫都不是防御性冗余：
 
