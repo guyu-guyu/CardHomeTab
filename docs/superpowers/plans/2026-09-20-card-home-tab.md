@@ -972,7 +972,7 @@ describe("parseDashboard", () => {
   });
 
   it("closes a fence only with a matching character and enough length", () => {
-    const text = ["## 卡", "````", "~~~", "```", "````", "still inside", "````", "## 下一张", ""].join("\n");
+    const text = ["## 卡", "````", "~~~", "```", "still inside", "````", "## 下一张", ""].join("\n");
     const sections = parseDashboard(text, 2);
     expect(sections.map((s) => s.title)).toEqual(["卡", "下一张"]);
     expect(sectionBody(text, sections[0]!)).toContain("still inside");
@@ -1073,6 +1073,13 @@ describe("parseDashboard", () => {
     expect(sections.map((s) => s.title)).toEqual(["空卡片", "下一张"]);
     expect(sectionBody(text, sections[0]!)).toBe("");
   });
+
+  it("handles CRLF line endings without losing every heading", () => {
+    const text = "## 甲\r\n正文\r\n## 乙\r\n正文\r\n";
+    const sections = parseDashboard(text, 2);
+    expect(sections.map((s) => s.title)).toEqual(["甲", "乙"]);
+    expect(sectionBody(text, sections[0]!)).toBe("正文\r\n");
+  });
 });
 ```
 
@@ -1110,18 +1117,17 @@ function toLines(text: string): Line[] {
   let start = 0;
   for (let i = 0; i < text.length; i++) {
     if (text.charCodeAt(i) === 10) {
-      lines.push({ text: text.slice(start, i), start, end: i + 1 });
+      lines.push({ text: text.slice(start, i).replace(/\r$/, ""), start, end: i + 1 });
       start = i + 1;
     }
   }
   if (start < text.length) {
-    lines.push({ text: text.slice(start), start, end: text.length });
+    lines.push({ text: text.slice(start).replace(/\r$/, ""), start, end: text.length });
   }
   return lines;
 }
 
-function headingMatch(line: string): { level: number; title: string } | null {
-  const match = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/.exec(line);
+function headingMatch(line: string): { level: number; title: string } | null {  const match = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/.exec(line);
   if (!match) {
     return null;
   }
@@ -1238,7 +1244,9 @@ export function sectionBody(text: string, section: CardSection): string {
 - [ ] **Step 8: 运行解析测试确认通过**
 
 Run: `npx vitest run tests/parse.test.ts`
-Expected: PASS，19 个用例。
+Expected: PASS，20 个用例。
+
+`toLines` 里 `replace(/\r$/, "")` 不是可有可无的清理：JS 正则的 `.` 不匹配 `\r`，所以 CRLF 文件里 `"## 甲\r"` 会让 `headingMatch` 的 `(.*?)[ \t]*$` 永远到不了 `$`，返回 `null`，结果是**一个标题都识别不出来、整个首页一张卡片都不显示**，而且没有任何报错。`\r` 只从用于匹配的行文本里剥掉，`start`/`end` 仍指向原始文本，所以 Task 4 的区间拼接保真性不受影响。
 
 - [ ] **Step 9: 跑全量测试并提交**
 
