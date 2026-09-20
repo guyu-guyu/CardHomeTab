@@ -1693,6 +1693,28 @@ describe("resolveSnippetRefs", () => {
   it("returns nothing when css is empty", () => {
     expect(resolveSnippetRefs(meta("%%card:%%"), "```base\n```")).toEqual([]);
   });
+
+  it("expands auto wherever it appears and keeps the other references", () => {
+    expect(resolveSnippetRefs(meta("%%card: css=auto,user:mine%%"), "```base\n```")).toEqual([
+      "builtin:text",
+      "builtin:code",
+      "builtin:base",
+      "user:mine",
+    ]);
+    expect(resolveSnippetRefs(meta("%%card: css=user:mine,auto%%"), "```base\n```")).toEqual([
+      "user:mine",
+      "builtin:text",
+      "builtin:code",
+      "builtin:base",
+    ]);
+  });
+
+  it("does not emit the same reference twice", () => {
+    expect(resolveSnippetRefs(meta("%%card: css=auto,text%%"), "")).toEqual(["builtin:text"]);
+    expect(resolveSnippetRefs(meta("%%card: css=base,builtin:base%%"), "")).toEqual([
+      "builtin:base",
+    ]);
+  });
 });
 ```
 
@@ -1756,17 +1778,35 @@ export function resolveSnippetRefs(meta: CardMeta, markdown: string): string[] {
   if (meta.css.length === 0) {
     return [];
   }
-  if (meta.css.length === 1 && meta.css[0] === AUTO_CSS) {
-    return detectContentSnippets(markdown).map((name) => `builtin:${name}`);
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  const push = (ref: string): void => {
+    if (!seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  };
+  for (const entry of meta.css) {
+    if (entry === AUTO_CSS) {
+      for (const name of detectContentSnippets(markdown)) {
+        push(`builtin:${name}`);
+      }
+      continue;
+    }
+    push(entry.includes(":") ? entry : `builtin:${entry}`);
   }
-  return meta.css.map((ref) => (ref.includes(":") ? ref : `builtin:${ref}`));
+  return refs;
 }
 ```
+
+`auto` 在列表里**任何位置**都展开，而不是"仅当它是唯一一项"。原实现要求 `css.length === 1 && css[0] === AUTO_CSS`，于是 `%%card: css=auto,text%%` 会把 `auto` 当成片段名，产出并不存在的 `builtin:auto`，被片段仓库静默忽略——用户想要"自动 + 我的片段"，实际只拿到 `text`，自动检测完全失效且没有任何提示。设计文档只说"`css=auto` 表示按内容类型自动套用"，从未规定它必须单独出现，所以那个 `length === 1` 是代码自带的限制而非需求。
+
+展开之后必须去重：`css=auto,text` 里 `auto` 已展开出 `builtin:text`，显式那项再推一次就成了重复注入。`seen` 集合按首次出现顺序保留。
 
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/auto-snippets.test.ts`
-Expected: PASS，14 个用例。
+Expected: PASS，16 个用例。
 
 - [ ] **Step 5: 提交**
 
