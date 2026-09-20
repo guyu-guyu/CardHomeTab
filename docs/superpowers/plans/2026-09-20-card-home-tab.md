@@ -1426,6 +1426,14 @@ describe("moveCard", () => {
     const sections = parseDashboard(crlf, 2);
     expect(moveCard(crlf, sections, 0, 1)).toBe("## 乙\r\n正文乙\r\n## 甲\r\n正文甲\r\n");
   });
+
+  it("keeps page-level text that sits between two cards", () => {
+    const text = "## 甲\n甲内容\n# 中断\n页级正文\n## 乙\n乙内容\n";
+    const sections = parseDashboard(text, 2);
+    expect(moveCard(text, sections, 0, 1)).toBe(
+      "## 乙\n乙内容\n# 中断\n页级正文\n## 甲\n甲内容\n",
+    );
+  });
 });
 
 describe("appendCard", () => {
@@ -1517,9 +1525,14 @@ export function moveCard(text: string, sections: CardSection[], from: number, to
   });
   const moved = blocks.splice(from, 1)[0]!;
   blocks.splice(to, 0, moved);
-  const head = text.slice(0, ordered[0]!.start);
-  const tail = text.slice(ordered[ordered.length - 1]!.end);
-  return head + blocks.join("") + tail;
+  let result = "";
+  let cursor = 0;
+  for (let i = 0; i < ordered.length; i++) {
+    const section = ordered[i]!;
+    result += text.slice(cursor, section.start) + blocks[i]!;
+    cursor = section.end;
+  }
+  return result + text.slice(cursor);
 }
 
 export function appendCard(
@@ -1540,9 +1553,11 @@ export function appendCard(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/edit.test.ts`
-Expected: PASS，26 个用例。
+Expected: PASS，27 个用例。
 
-`moveCard` / `removeCard` 是纯区间拼接，必须原样保留 CRLF 字节；两条 CRLF 测试就是钉这一点。**已知限制**：`updateCardMeta` 与 `appendCard` 插入的新行固定用 `\n`，所以在 CRLF 文件里这两处会产生混合行尾。功能与解析都不受影响（`toLines` 已剥 `\r`），只是 git diff 里那一行会显得突兀。收益不足以在本版引入行尾探测，记入 README 的已知限制。
+`moveCard` 用 `text.slice(cursor, section.start) + blocks[i]` 逐段拼回，而不是 `head + blocks.join("") + tail`。两者的差别只在"卡片之间夹着页面级文本"时显现：`parseDashboard` 让 section 终止于更高级标题，因此两个卡片之间可以存在**不属于任何 section** 的字节（例如文档中段的 `# 分区标题` 及其正文）。用 `head + join + tail` 拼会把这些字节静默丢掉——测过的例子是 10 个字节整段消失。逐段拼接把每个 section 的新内容写回它原来的位置区间，间隙一字不动。
+
+`moveCard` / `removeCard` 是纯区间拼接，必须原样保留 CRLF 字节；那两条 CRLF 测试就是钉这一点。**已知限制**：`updateCardMeta` 与 `appendCard` 插入的新行固定用 `\n`，所以在 CRLF 文件里这两处会产生混合行尾。功能与解析都不受影响（`toLines` 已剥 `\r`），只是 git diff 里那一行会显得突兀。收益不足以在本版引入行尾探测，记入 README 的已知限制。
 
 - [ ] **Step 5: 提交**
 
