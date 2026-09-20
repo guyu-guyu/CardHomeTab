@@ -40,6 +40,7 @@
 | `src/builtin-snippets/*.css` | 五个内置片段源码 | 7 |
 | `src/snippets.ts` | 内置 + 用户片段发现与读取 | 7 |
 | `vitest.config.ts` | 让 vitest（Vite）把 `.css` 当文本导入 | 7 |
+| `src/vault-path.ts` | 库内路径规范化（纯函数，可单测） | 8 |
 | `src/dashboard/io.ts` | `vault.process` 原子写入、文件缺失处理 | 8 |
 | `src/main.ts` | 插件入口、命令、事件、视图注册 | 9 |
 | `src/home-view.ts` | 首页 `ItemView`：骨架与编排 | 9 |
@@ -2652,22 +2653,117 @@ git commit -m "feat: 五个按内容类型分组的内置片段与片段仓库"
 ### Task 8: 仪表盘文件读写
 
 **Files:**
+- Create: `src/vault-path.ts`
 - Create: `src/dashboard/io.ts`
+- Test: `tests/vault-path.test.ts`
 
 **Interfaces:**
 - Consumes: `CardHomeTabSettings`（Task 1）；`parseDashboard`、`CardSection`（Task 3）
-- Produces: `class DashboardStore { constructor(app: App, getSettings: () => CardHomeTabSettings); get path(): string; get file(): TFile | null; exists(): boolean; create(): Promise<void>; read(): Promise<string | null>; sections(): Promise<CardSection[]>; process(mutate: (text: string) => string): Promise<void> }`
+- Produces:
+  - `normalizeVaultPath(raw: string): string`
+  - `class DashboardStore { constructor(app: App, getSettings: () => CardHomeTabSettings); get path(): string; get file(): TFile | null; exists(): boolean; create(): Promise<void>; read(): Promise<string | null>; sections(): Promise<CardSection[]>; process(mutate: (text: string) => string): Promise<void> }`
 
-本模块依赖 Vault，按设计文档的测试策略不写单测，由 Task 9 的手工验收覆盖。
+`src/vault-path.ts` 是纯函数、不引入 Obsidian，因此可以单测；`src/dashboard/io.ts` 依赖 Vault，按设计文档的测试策略不写单测，由 Task 9 的手工验收覆盖。**注意 `obsidian` 包只有类型、没有运行时 JS**，所以任何单测都不能间接导入 `io.ts`（它有 `TFile` 的 value import）——这正是把规范化逻辑单独拆出来的另一个原因。
 
-- [ ] **Step 1: 写实现**
+- [ ] **Step 1: 写失败的测试**
+
+`tests/vault-path.test.ts`：
+
+```ts
+import { describe, expect, it } from "vitest";
+import { normalizeVaultPath } from "../src/vault-path";
+
+describe("normalizeVaultPath", () => {
+  it("leaves an ordinary path alone", () => {
+    expect(normalizeVaultPath("Home.md")).toBe("Home.md");
+    expect(normalizeVaultPath("子目录/Home.md")).toBe("子目录/Home.md");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(normalizeVaultPath("  Home.md  ")).toBe("Home.md");
+  });
+
+  it("strips leading slashes and dot segments", () => {
+    expect(normalizeVaultPath("/Home.md")).toBe("Home.md");
+    expect(normalizeVaultPath("./Home.md")).toBe("Home.md");
+    expect(normalizeVaultPath(".//Home.md")).toBe("Home.md");
+  });
+
+  it("collapses repeated and trailing separators", () => {
+    expect(normalizeVaultPath("a//b///Home.md")).toBe("a/b/Home.md");
+    expect(normalizeVaultPath("a/b/")).toBe("a/b");
+  });
+
+  it("accepts windows separators", () => {
+    expect(normalizeVaultPath("子目录\\Home.md")).toBe("子目录/Home.md");
+    expect(normalizeVaultPath(".\\Home.md")).toBe("Home.md");
+  });
+
+  it("resolves parent references", () => {
+    expect(normalizeVaultPath("a/b/../Home.md")).toBe("a/Home.md");
+    expect(normalizeVaultPath("a/../../Home.md")).toBe("Home.md");
+  });
+
+  it("returns an empty string for input that resolves to nothing", () => {
+    expect(normalizeVaultPath("")).toBe("");
+    expect(normalizeVaultPath("   ")).toBe("");
+    expect(normalizeVaultPath("/")).toBe("");
+    expect(normalizeVaultPath(".")).toBe("");
+  });
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `npx vitest run tests/vault-path.test.ts`
+Expected: FAIL — 无法解析 `../src/vault-path`。
+
+- [ ] **Step 3: 写实现**
+
+`src/vault-path.ts`：
+
+```ts
+/**
+ * 把用户填的路径整理成 Obsidian 的库内路径形式。
+ *
+ * `getAbstractFileByPath` 是精确匹配，而 `Vault.create` 会把路径规范化后再落盘。
+ * 两者不一致时会出现很难查的现象：用户填了 `./Home.md`，`exists()` 永远为 false，
+ * 首页一直显示"文件缺失"，点"创建并打开"也修不好——因为文件其实已经被创建成
+ * `Home.md` 了。所以这里在进入 store 之前就把路径统一掉。
+ */
+export function normalizeVaultPath(raw: string): string {
+  const unified = raw.trim().replace(/\\/g, "/");
+  const segments: string[] = [];
+  for (const segment of unified.split("/")) {
+    if (segment.length === 0 || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join("/");
+}
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `npx vitest run tests/vault-path.test.ts`
+Expected: PASS，7 个用例。
+
+- [ ] **Step 5: 写 store**
 
 `src/dashboard/io.ts`：
 
 ```ts
 import { TFile, type App, type Vault } from "obsidian";
 import type { CardHomeTabSettings } from "../settings";
+import { normalizeVaultPath } from "../vault-path";
 import { parseDashboard, type CardSection } from "./parse";
+
+const FALLBACK_PATH = "Home.md";
 
 export class DashboardStore {
   private readonly app: App;
@@ -2679,7 +2775,7 @@ export class DashboardStore {
   }
 
   get path(): string {
-    return this.getSettings().dashboardFile.trim() || "Home.md";
+    return normalizeVaultPath(this.getSettings().dashboardFile) || FALLBACK_PATH;
   }
 
   get file(): TFile | null {
@@ -2707,7 +2803,7 @@ export class DashboardStore {
         try {
           await this.vault.createFolder(folder);
         } catch {
-          // 文件夹可能已被并发创建，忽略
+          // 文件夹可能已被并发创建或被用户手工建好，忽略
         }
       }
     }
@@ -2740,15 +2836,19 @@ export class DashboardStore {
 }
 ```
 
-- [ ] **Step 2: 类型检查**
+`path` 会兜底成 `Home.md`：设置项可以被清空，而仪表盘总得指向某个东西。`create()` 容忍文件夹已存在（并发创建或用户手建），但不能吞掉随后 `create` 的失败。`process()` 是唯一会抛的方法——文件不存在时写入属于调用方的编程错误，调用方应先 `create()`。
 
-Run: `npx tsc --noEmit`
-Expected: 无输出。
+- [ ] **Step 6: 类型检查与全量检查**
 
-- [ ] **Step 3: 提交**
+Run: `npm run check`
+Expected: 全绿。
+
+`src/dashboard/io.ts` 此时还没有被任何模块引用（`src/main.ts` 仍是 Task 1 的空壳），所以 esbuild 的 tree-shaking 不会把它打进 `dist/main.js`——这是预期的，Task 9 才把它接上。
+
+- [ ] **Step 7: 提交**
 
 ```bash
-git add src/dashboard/io.ts
+git add src/vault-path.ts src/dashboard/io.ts tests/vault-path.test.ts
 git commit -m "feat: 仪表盘文件的原子读写与创建"
 ```
 
