@@ -36,7 +36,7 @@ In Obsidian, open **Settings → Community plugins → Browse** and search for "
 
 ## The dashboard note
 
-The default dashboard file is `Home.md`. A heading whose level equals the **card heading level** (2 by default) starts a card; the card body runs until the next heading of that same level.
+The default dashboard file is `Home.md`. A heading whose level equals the **card heading level** (2 by default) starts a card; the card body runs until the next heading of that level or a shallower one.
 
 ```markdown
 # My home
@@ -53,7 +53,7 @@ The default dashboard file is `Home.md`. A heading whose level equals the **card
 ## Another card starts here
 ```
 
-- The H1 and the frontmatter are page-level and never become a card.
+- Headings shallower than the card heading level (the H1 title, for instance) are page-level: they never become a card, and one closes the card above it. A YAML frontmatter block is ignored as well.
 - Headings deeper than the card heading level render inside the card, as usual.
 - The heading text is the card title.
 - A section with no `%%card:` line is a plain card: `span=1`, no snippets, no icon.
