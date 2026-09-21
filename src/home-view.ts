@@ -1,4 +1,5 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
+import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
 
 export const HOME_VIEW_TYPE = "card-home-tab-view";
@@ -46,7 +47,7 @@ export class HomeView extends ItemView {
       this.renderMissingFile(root);
       return;
     }
-    root.createDiv({ cls: "home-tab-placeholder", text: "卡片区域将在 Task 10 接入" });
+    root.createDiv({ cls: "home-tab-placeholder", text: "卡片区域尚未接入" });
   }
 
   private renderMissingFile(root: HTMLElement): void {
@@ -55,15 +56,17 @@ export class HomeView extends ItemView {
     const button = notice.createEl("button", { text: "创建并打开" });
     button.addEventListener("click", () => {
       void (async () => {
-        // create() 会在目标路径被同名文件或文件夹占住时拒绝；不接住就只剩控制台里的
-        // unhandled rejection，界面上没有任何提示。
+        // openDashboardNote() 自己就会在文件缺失时创建它，这里不必再调一次 create()。
+        // openLinkText 仍可能拒绝；不接住就只剩控制台里的 unhandled rejection。
         try {
-          await this.plugin.store.create();
           await this.plugin.openDashboardNote();
-          await this.render();
+          if (this.plugin.store.exists()) {
+            await this.render();
+          }
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          new Notice(`CardHomeTab: 无法创建或打开仪表盘文件 ${this.plugin.store.path}：${reason}`);
+          new Notice(
+            `CardHomeTab: 无法创建或打开仪表盘文件 ${this.plugin.store.path}：${errorMessage(error)}`,
+          );
         }
       })();
     });

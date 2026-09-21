@@ -1,4 +1,4 @@
-import { Notice, Plugin } from "obsidian";
+import { MarkdownView, Notice, Plugin } from "obsidian";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
@@ -6,22 +6,24 @@ import {
 } from "./dashboard/edit";
 import { DEFAULT_CARD_META } from "./dashboard/metadata";
 import type { CardSection } from "./dashboard/parse";
+import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { SnippetRegistry } from "./snippets";
 
 export default class CardHomeTabPlugin extends Plugin {
   settings: CardHomeTabSettings = { ...DEFAULT_SETTINGS, recentFiles: [] };
   store!: DashboardStore;
+  snippets!: SnippetRegistry;
 
   private selfWriting = false;
+  private unloaded = false;
+  private replacingLeaf = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
     this.store = new DashboardStore(this.app, () => this.settings);
+    this.snippets = new SnippetRegistry(this.app);
 
     this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
 
@@ -49,6 +51,14 @@ export default class CardHomeTabPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: "new-card",
+      name: "新建卡片",
+      callback: () => {
+        void this.addCard();
+      },
+    });
+
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
         this.maybeReplaceEmptyLeaf();
@@ -65,10 +75,15 @@ export default class CardHomeTabPlugin extends Plugin {
     );
 
     this.app.workspace.onLayoutReady(() => {
-      if (this.settings.openOnStartup) {
-        void this.openHome();
+      if (this.unloaded || !this.settings.openOnStartup) {
+        return;
       }
+      void this.openHome();
     });
+  }
+
+  onunload(): void {
+    this.unloaded = true;
   }
 
   async openHome(): Promise<void> {
@@ -101,9 +116,10 @@ export default class CardHomeTabPlugin extends Plugin {
     try {
       return await action();
     } finally {
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
         this.selfWriting = false;
       }, 350);
+      this.register(() => window.clearTimeout(timer));
     }
   }
 
@@ -129,6 +145,21 @@ export default class CardHomeTabPlugin extends Plugin {
       return;
     }
     this.refreshHome();
+  }
+
+  async editCard(section: CardSection): Promise<void> {
+    await this.openDashboardNote();
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) {
+      return;
+    }
+    const line = view.editor.offsetToPos(section.start).line;
+    view.editor.setCursor({ line, ch: 0 });
+    view.editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
+  }
+
+  openCardSettings(section: CardSection): void {
+    new Notice(`卡片设置将在后续接入：${section.title}`);
   }
 
   private async writeDashboard(mutate: (text: string) => string): Promise<boolean> {
@@ -159,14 +190,19 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   private maybeReplaceEmptyLeaf(): void {
-    if (!this.settings.replaceNewTabs) {
+    if (this.replacingLeaf || !this.settings.replaceNewTabs) {
       return;
     }
     const leaf = this.app.workspace.getMostRecentLeaf();
     if (!leaf || leaf.view.getViewType() !== "empty") {
       return;
     }
-    void leaf.setViewState({ type: HOME_VIEW_TYPE, active: true });
+    this.replacingLeaf = true;
+    void leaf
+      .setViewState({ type: HOME_VIEW_TYPE, active: true })
+      .finally(() => {
+        this.replacingLeaf = false;
+      });
   }
 
   async loadSettings(): Promise<void> {
