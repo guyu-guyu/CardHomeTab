@@ -95,6 +95,17 @@ export default class CardHomeTabPlugin extends Plugin {
       }),
     );
 
+    // 视图被「移到新窗口」或 popout 关闭移回时，卡片 DOM 会 re-parent 到另一个 document，
+    // 但每卡片的 scoped 样式表是 document 级的（adoptedStyleSheets），不会跟着元素跨文档，
+    // popout 里卡片会掉样式。这两个事件触发一次重渲染，让 render() 按卡片当前的
+    // ownerDocument 重新挂表。延后一拍（setTimeout 0）是等 Obsidian 把叶子 DOM 真正
+    // 移进新窗口后再渲染，否则会渲染到还没换过去的旧文档上。
+    const refreshAfterMove = (): void => {
+      window.setTimeout(() => this.refreshHome(), 0);
+    };
+    this.registerEvent(this.app.workspace.on("window-open", refreshAfterMove));
+    this.registerEvent(this.app.workspace.on("window-close", refreshAfterMove));
+
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded || !this.settings.openOnStartup) {
         return;

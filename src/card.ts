@@ -13,17 +13,28 @@ import type { CardSection } from "./dashboard/parse";
  * 环境都支持它。这个探测仍然保留，作为老环境的降级开关：不支持时只跳过样式注入，
  * 卡片照常渲染，不抛异常。
  */
-let styleSheetSupport: boolean | null = null;
+// popout 窗口是另一个 window，`CSSStyleSheet` / `Document` 构造器挂在它自己身上；
+// 用类型查询取到全局类的类型（不写 `globalThis`，那会撞 obsidianmd/no-global-this）。
+type StyleSheetWindow = Window & {
+  CSSStyleSheet: typeof CSSStyleSheet;
+  Document: typeof Document;
+};
 
-function supportsConstructableStyleSheets(): boolean {
-  if (styleSheetSupport !== null) {
-    return styleSheetSupport;
+// 按 window 缓存而不是单个模块级布尔：popout 窗口是另一个 window，能力探测要各算各的。
+const styleSheetSupport = new WeakMap<Window, boolean>();
+
+function supportsConstructableStyleSheets(win: Window): boolean {
+  const cached = styleSheetSupport.get(win);
+  if (cached !== undefined) {
+    return cached;
   }
-  styleSheetSupport =
-    typeof CSSStyleSheet === "function" &&
-    "adoptedStyleSheets" in Document.prototype &&
-    "replaceSync" in CSSStyleSheet.prototype;
-  return styleSheetSupport;
+  const scoped = win as StyleSheetWindow;
+  const supported =
+    typeof scoped.CSSStyleSheet === "function" &&
+    "adoptedStyleSheets" in scoped.Document.prototype &&
+    "replaceSync" in scoped.CSSStyleSheet.prototype;
+  styleSheetSupport.set(win, supported);
+  return supported;
 }
 
 export interface CardCallbacks {
@@ -54,6 +65,7 @@ export class CardView {
   private readonly contentEl: HTMLElement;
   private disposeDrag: () => void = () => undefined;
   private sheet: CSSStyleSheet | null = null;
+  private sheetDoc: Document | null = null;
   private destroyed = false;
   private component: Component | null = null;
   private renderToken = 0;
@@ -110,22 +122,37 @@ export class CardView {
     }
     this.detachStyles();
     const trimmed = css.trim();
-    if (trimmed.length === 0 || !supportsConstructableStyleSheets()) {
+    if (trimmed.length === 0) {
       return;
     }
-    const sheet = new CSSStyleSheet();
+    // 用卡片所在文档而不是全局 document：视图被「移到新窗口」后卡片属于 popout 文档，
+    // 样式表必须挂到那个文档、且用那个 window 的 CSSStyleSheet 构造，否则 @scope 选择器
+    // 在 popout 里一条都匹配不上（样式静默失效）。与 card-grid 用 ownerDocument 的做法一致。
+    // applyStyles 只在 el 已挂进 grid 之后（home-view 先 appendChild 再 render）被调用，
+    // 所以此刻 ownerDocument 已是最终那个文档。
+    const doc = this.el.ownerDocument;
+    const win = doc.defaultView;
+    if (!win || !supportsConstructableStyleSheets(win)) {
+      return;
+    }
+    const sheet = new (win as StyleSheetWindow).CSSStyleSheet();
     sheet.replaceSync(trimmed);
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
     this.sheet = sheet;
+    this.sheetDoc = doc;
   }
 
   private detachStyles(): void {
     const sheet = this.sheet;
-    if (!sheet) {
+    const doc = this.sheetDoc;
+    if (!sheet || !doc) {
       return;
     }
-    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((item) => item !== sheet);
+    // 从当初挂上去的那个文档移除，而不是现时的 ownerDocument：卡片可能已在窗口间移动，
+    // 用现时文档会漏删、在旧文档里留下一张孤儿样式表。
+    doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((item) => item !== sheet);
     this.sheet = null;
+    this.sheetDoc = null;
   }
 
   async render(body: string, css: string): Promise<void> {

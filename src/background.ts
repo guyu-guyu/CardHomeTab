@@ -25,7 +25,9 @@ export function renderBackground(
   if (settings.backgroundType === "none") {
     return;
   }
-  const isDark = document.body.hasClass("theme-dark");
+  // 用背景层所在文档而不是全局 document：视图被「移到新窗口」后 root 属于 popout 文档，
+  // 全局 document.body 的主题类可能与 popout 不一致，导致 popout 里取错亮/暗背景。
+  const isDark = root.ownerDocument.body.hasClass("theme-dark");
   const preferred = isDark ? settings.backgroundDark : settings.backgroundLight;
   const fallback = isDark ? settings.backgroundLight : settings.backgroundDark;
   const source =
