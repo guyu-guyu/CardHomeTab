@@ -3580,7 +3580,7 @@ git commit -m "feat: 卡片渲染管线与 MarkdownRenderer 生命周期管理"
 **Files:**
 - Create: `src/card-grid.ts`
 - Modify: `src/card.ts`, `src/home-view.ts`, `src/main.ts`, `styles.css`
-- Test: `tests/drop-index.test.ts`
+- Test: `tests/drop-index.test.ts`, `tests/card-grid-drag.test.ts`
 
 **Interfaces:**
 - Consumes: `CardSection`（Task 3）；`moveCard`（Task 4）；`CardView`（Task 10）
@@ -3696,13 +3696,23 @@ function cardRects(gridEl: HTMLElement): Rect[] {
 }
 
 export function enableCardDrag(args: DragArgs): () => void {
-  const { gridEl, cardEl, handleEl, index, onDrop, isEnabled } = args;
+  const { gridEl, cardEl, handleEl, onDrop, isEnabled } = args;
+  let dragging = false;
 
   const enableDraggable = (): void => {
+    dragging = false;
     cardEl.setAttribute("draggable", "true");
   };
   const disableDraggable = (): void => {
     cardEl.removeAttribute("draggable");
+  };
+  /** 只为"按下了把手但并没有真的开始拖"这种收尾而存在。
+   *  少了它，draggable 会一直挂着，直到下一次 dragend 才被清掉——
+   *  期间用户在卡片正文里划选文字会变成拖卡片。 */
+  const resetIfNotDragging = (): void => {
+    if (!dragging) {
+      disableDraggable();
+    }
   };
 
   const handleDragStart = (event: DragEvent): void => {
@@ -3710,21 +3720,37 @@ export function enableCardDrag(args: DragArgs): () => void {
       event.preventDefault();
       return;
     }
+    dragging = true;
     cardEl.addClass("is-dragging");
+    gridEl.dataset["draggingIndex"] = String(args.index);
     if (event.dataTransfer) {
-      event.dataTransfer.setData("text/plain", String(index));
+      event.dataTransfer.setData("text/plain", String(args.index));
       event.dataTransfer.effectAllowed = "move";
     }
+  };
+
+  /**
+   * 被拖卡片的**起始**下标必须另走一条通道。
+   *
+   * drop 事件落在指针下方的元素上，也就是"目标卡片"，所以那个卡片自己的闭包 `index`
+   * 是它自己；而 `computeDropIndex` 在目标卡片内部算出来的也是它自己的槽位——
+   * 两者恒等，`target === index` 永远成立，`onDrop` 一次都不会触发，**拖了等于没拖**，
+   * 而且没有任何报错。所以优先读 `dataTransfer`（`dragstart` 里已经写入，标准通道），
+   * 读不到再退回网格上的备份（部分平台/情况下 drop 阶段的 `getData` 返回空串）。
+   */
+  const draggedIndex = (event: DragEvent): number => {
+    const payload = event.dataTransfer?.getData("text/plain") ?? "";
+    const raw = payload.length > 0 ? payload : (gridEl.dataset["draggingIndex"] ?? "");
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? args.index : parsed;
   };
 
   const handleDragOver = (event: DragEvent): void => {
     if (!isEnabled()) {
       return;
     }
+    // 只为放行 drop；不做落点预览，所以不在这里写任何 dataset。
     event.preventDefault();
-    gridEl.dataset["dropIndex"] = String(
-      computeDropIndex(cardRects(gridEl), event.clientX, event.clientY),
-    );
   };
 
   const handleDrop = (event: DragEvent): void => {
@@ -3732,22 +3758,26 @@ export function enableCardDrag(args: DragArgs): () => void {
       return;
     }
     event.preventDefault();
+    const from = draggedIndex(event);
     let target = computeDropIndex(cardRects(gridEl), event.clientX, event.clientY);
-    if (target > index) {
+    if (target > from) {
       target -= 1;
     }
-    if (target !== index) {
-      onDrop(index, target);
+    if (target !== from) {
+      onDrop(from, target);
     }
   };
 
   const handleDragEnd = (): void => {
+    dragging = false;
     cardEl.removeClass("is-dragging");
-    delete gridEl.dataset["dropIndex"];
+    delete gridEl.dataset["draggingIndex"];
     disableDraggable();
   };
 
   handleEl.addEventListener("pointerdown", enableDraggable);
+  document.addEventListener("pointerup", resetIfNotDragging);
+  document.addEventListener("pointercancel", resetIfNotDragging);
   cardEl.addEventListener("dragstart", handleDragStart);
   cardEl.addEventListener("dragover", handleDragOver);
   cardEl.addEventListener("drop", handleDrop);
@@ -3755,6 +3785,8 @@ export function enableCardDrag(args: DragArgs): () => void {
 
   return () => {
     handleEl.removeEventListener("pointerdown", enableDraggable);
+    document.removeEventListener("pointerup", resetIfNotDragging);
+    document.removeEventListener("pointercancel", resetIfNotDragging);
     cardEl.removeEventListener("dragstart", handleDragStart);
     cardEl.removeEventListener("dragover", handleDragOver);
     cardEl.removeEventListener("drop", handleDrop);
@@ -3764,6 +3796,10 @@ export function enableCardDrag(args: DragArgs): () => void {
 ```
 
 只有按住抓手才把 `draggable` 打开，松手即撤掉——否则卡片正文里的文字无法正常选中。
+
+`cardRects` 里筛元素要用 Obsidian 的 `child.instanceOf(HTMLElement)`，不能写原生 `instanceof HTMLElement`：弹出窗口里的卡片属于另一个 `window`，原生 `instanceof` 会失配，而且 `obsidianmd/prefer-instanceof` 在 `--max-warnings 0` 下是硬门禁、规则本身不可 disable。
+
+另外必须补一个 `tests/card-grid-drag.test.ts`（计划原稿没有，是实测发现缺陷后加的）。`drop-index.test.ts` 只测 `computeDropIndex` 这个纯函数，而**真正会静默失效的地方在 `handleDrop` 取哪个下标当 `from`**：`drop` 事件落在指针下方的元素上（目标卡片），该卡片闭包里的 `index` 是它自己，于是 `target === index` 恒成立、`onDrop` 永不触发、拖拽完全无效且不报错。这个测试要用假的 `dataTransfer`、`gridEl.children` 与 `getBoundingClientRect` 把「起始下标从 `dataTransfer` 读」这条通道钉住：把 `draggedIndex` 换回闭包 `index` 时，它必须有若干条用例失败。
 
 - [ ] **Step 4: 运行测试确认通过**
 
@@ -3867,11 +3903,9 @@ import {
 .home-card.is-dragging {
   opacity: 0.45;
 }
-
-.home-card-drag-area {
-  display: inline-flex;
-}
 ```
+
+不要加 `.home-card-drag-area`：抓手直接用 `CardView.handleEl`（Task 10 已经存好的那个 `home-card-handle` 元素），没有中间容器，写了这条规则也没有任何元素会命中它。
 
 - [ ] **Step 8: 手工验收**
 
