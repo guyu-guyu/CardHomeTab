@@ -3312,7 +3312,8 @@ export class CardView {
         dashboardPath: this.plugin.store.path,
         cardId,
         callbacks: {
-          onEdit: (target) => void this.plugin.editCard(target),          onRemove: (target) => void this.plugin.removeCard(target),
+          onEdit: (target) => void this.plugin.editCard(target),
+          onRemove: (target) => void this.plugin.removeCard(target),
           onSettings: (target) => this.plugin.openCardSettings(target),
         },
       });
