@@ -4236,7 +4236,7 @@ git commit -m "feat: 自定义 logo、wordmark 与背景图层"
 
 **Interfaces:**
 - Consumes: `CardHomeTabSettings`、`RecentFile`（Task 1）
-- Produces: `SearchCandidate`、`buildCandidates(app: App, settings: CardHomeTabSettings, bookmarkPaths: string[], recentPaths: string[]): SearchCandidate[]`、`readBookmarkPaths(app: App): Promise<string[]>`、`renderSearchBar(root: HTMLElement, app: App, settings: CardHomeTabSettings, candidates: SearchCandidate[], emptyState: SearchCandidate[], onOpen: (candidate: SearchCandidate, newLeaf: boolean) => void): void`、`rememberRecentFile(settings: CardHomeTabSettings, path: string): RecentFile[]`
+- Produces: `SearchCandidate`、`buildCandidates(app: App, settings: CardHomeTabSettings, bookmarkPaths: string[], recentPaths: string[]): SearchCandidate[]`、`readBookmarkPaths(app: App): Promise<string[]>`、`renderSearchBar(root: HTMLElement, app: App, settings: CardHomeTabSettings, candidates: SearchCandidate[], emptyState: SearchCandidate[], onOpen: (candidate: SearchCandidate, newLeaf: boolean) => void): () => void`、`rememberRecentFile(settings: CardHomeTabSettings, path: string): RecentFile[]`
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -4245,15 +4245,27 @@ git commit -m "feat: 自定义 logo、wordmark 与背景图层"
 `tests/search-candidates.test.ts`：
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { rememberRecentFile } from "../src/search-bar";
+import { describe, expect, it, vi } from "vitest";
+
+// `obsidian` 这个 npm 包只有类型、没有运行时 JS（package.json 的 "main" 是空串），
+// 而 `src/search-bar.ts` 是 value import（`AbstractInputSuggest`、`TFile` 等都要在运行时存在）。
+// 不 mock 的话 vitest 会在解析依赖阶段就挂掉（Failed to resolve entry for package "obsidian"），
+// 连纯函数都到不了。被 mock 掉的只有这几个类的定义，被测的 `rememberRecentFile` 完全是纯逻辑。
+vi.mock("obsidian", () => ({
+  AbstractInputSuggest: class {},
+  TFile: class {},
+  prepareFuzzySearch: () => () => null,
+  renderResults: () => undefined,
+}));
+
 import { DEFAULT_SETTINGS } from "../src/settings";
+import { rememberRecentFile } from "../src/search-bar";
 
 describe("rememberRecentFile", () => {
   it("puts the newest entry first", () => {
     const settings = { ...DEFAULT_SETTINGS, recentFiles: [{ path: "a.md", timestamp: 1 }] };
     expect(rememberRecentFile(settings, "b.md")).toEqual([
-      { path: "b.md", timestamp: expect.any(Number) },
+      { path: "b.md", timestamp: expect.any(Number) as number },
       { path: "a.md", timestamp: 1 },
     ]);
   });
@@ -4294,6 +4306,11 @@ describe("rememberRecentFile", () => {
 });
 ```
 
+两处不能照抄的地方：
+
+- **必须 `vi.mock("obsidian", ...)`**。`obsidian` 包只有类型，`src/search-bar.ts` 又是 value import，不做这一步 vitest 在解析依赖时就失败，纯函数根本执行不到。
+- **`expect.any(Number) as number`**。`expect.any` 的返回类型是 `any`，直接放进对象字面量会触发 `no-unsafe-assignment`，而 lint 门禁是 `--max-warnings 0`。
+
 - [ ] **Step 2: 运行测试确认失败**
 
 Run: `npx vitest run tests/search-candidates.test.ts`
@@ -4317,8 +4334,6 @@ export interface SearchCandidate {
   basename: string;
   kind: "file" | "bookmark" | "recent";
 }
-
-const MAX_FILE_SUGGESTIONS = 200;
 
 export function rememberRecentFile(
   settings: CardHomeTabSettings,
@@ -4416,12 +4431,13 @@ class CandidateSuggest extends AbstractInputSuggest<SearchCandidate> {
     candidates: SearchCandidate[],
     emptyState: SearchCandidate[],
     showPath: boolean,
+    limit: number,
   ) {
     super(app, inputEl);
     this.candidates = candidates;
     this.emptyState = emptyState;
     this.showPath = showPath;
-    this.limit = MAX_FILE_SUGGESTIONS;
+    this.limit = limit;
   }
 
   protected getSuggestions(query: string): SearchCandidate[] {
@@ -4462,21 +4478,37 @@ export function renderSearchBar(
   settings: CardHomeTabSettings,
   candidates: SearchCandidate[],
   emptyState: SearchCandidate[],
-  onOpen: (candidate: SearchCandidate, newLeaf: boolean) => void,
-): void {
+  onOpen: (candidate: SearchCandidate, onNewLeaf: boolean) => void,
+): () => void {
   const wrapper = root.createDiv({ cls: "home-tab-search" });
   const input = wrapper.createEl("input", {
     cls: "home-tab-search-input",
     attr: { type: "text", placeholder: "搜索笔记…" },
   });
 
-  const suggest = new CandidateSuggest(app, input, candidates, emptyState, settings.showPath);
+  const suggest = new CandidateSuggest(
+    app,
+    input,
+    candidates,
+    emptyState,
+    settings.showPath,
+    settings.maxResults,
+  );
   suggest.onSelect((candidate, event) => {
     input.value = "";
     onOpen(candidate, event.ctrlKey || event.metaKey);
   });
+
+  // 必须把关闭动作交回调用方。`AbstractInputSuggest` 会在自己那侧挂一个弹出层，
+  // 而 HomeView 每次重渲染都会 `root.empty()` 掉输入框——DOM 节点没了，suggest 实例
+  // 却还活着，弹出的列表就可能留在页面上。返回一个清理函数，由视图在重渲染/关闭时调用。
+  return () => {
+    suggest.close();
+  };
 }
 ```
+
+`maxResults` 就是设置里搜索分区的"结果数"，必须真的用来限制建议条数；原来那个写死的 `MAX_FILE_SUGGESTIONS = 200` 是常量，改设置没有任何效果。`emptyState` 的截取也用同一个值（见 HomeView 的接线）。
 
 `class CandidateSuggest` 里 `renderSuggestion` 只渲染纯文本，不做匹配高亮——`renderResults` 的高亮需要把 `matches` 一起传进去，属于锦上添花，本版不做，以免主体功能被签名细节拖住。
 
@@ -4494,15 +4526,40 @@ Expected: PASS，4 个用例。
 ```ts
     if (this.plugin.settings.showSearch) {
       const bookmarkPaths = await readBookmarkPaths(this.app);
+      if (token !== this.renderToken) {
+        return;
+      }
       const recentPaths = this.plugin.settings.recentFiles.map((entry) => entry.path);
       const candidates = buildCandidates(this.app, this.plugin.settings, bookmarkPaths, recentPaths);
       const emptyState = candidates
         .filter((candidate) => candidate.kind !== "file")
         .slice(0, Math.max(this.plugin.settings.maxResults, this.plugin.settings.maxRecentFiles));
-      renderSearchBar(stage, this.app, this.plugin.settings, candidates, emptyState, (candidate, newLeaf) => {
-        void this.plugin.openSearchResult(candidate.path, newLeaf);
-      });
+      this.disposeSearch = renderSearchBar(
+        stage,
+        this.app,
+        this.plugin.settings,
+        candidates,
+        emptyState,
+        (candidate, onNewLeaf) => {
+          void this.plugin.openSearchResult(candidate.path, onNewLeaf);
+        },
+      );
     }
+```
+
+`readBookmarkPaths` 是本方法里**第三个** `await`，所以它后面也要补一次令牌检查，否则一次被取代的渲染会继续往已经被清空过的 `stage` 里插搜索框。
+
+搜索框的清理函数存在视图字段上，重渲染与关闭时都要调用：
+
+```ts
+  private disposeSearch: (() => void) | null = null;
+```
+
+`render()` 开头（与 `this.disposeCards();` 并列）和 `onClose()` 里各加：
+
+```ts
+    this.disposeSearch?.();
+    this.disposeSearch = null;
 ```
 
 新增 import：
@@ -4515,15 +4572,17 @@ import { buildCandidates, readBookmarkPaths, renderSearchBar } from "./search-ba
 
 ```ts
   async openSearchResult(path: string, newLeaf: boolean): Promise<void> {
-    this.settings.recentFiles = rememberRecentFile(this.settings, path);
-    await this.saveSettings();
-    if (newLeaf) {
-      await this.app.workspace.openLinkText(path, "", "tab");
-    } else {
-      await this.app.workspace.openLinkText(path, "", false);
+    try {
+      this.settings.recentFiles = rememberRecentFile(this.settings, path);
+      await this.saveSettings();
+      await this.app.workspace.openLinkText(path, "", newLeaf ? "tab" : false);
+    } catch (error) {
+      new Notice(`无法打开笔记：${errorMessage(error)}`);
     }
   }
 ```
+
+调用点是 `void this.plugin.openSearchResult(...)`，`void` 会把 rejection 丢掉、只剩控制台一条未处理拒绝，所以内部必须兜住——和 `moveCard` / `addCard` 的处理一致。
 
 新增 import：`import { rememberRecentFile } from "./search-bar";`
 
