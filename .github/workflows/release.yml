@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"   # 裸版本号，如 0.1.0；GitHub 用 glob 语法，不是正则
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package.json, manifest.json and versions.json
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PKG="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")"
+          MAN="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version")"
+          MANMIN="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).minAppVersion")"
+          MIN="$(TAG="$TAG" node -p "JSON.parse(require('fs').readFileSync('versions.json','utf8'))[process.env.TAG] ?? ''")"
+          echo "tag=$TAG package.json=$PKG manifest.json=$MAN versions.json[$TAG]=$MIN minAppVersion=$MANMIN"
+          [ "$TAG" = "$PKG" ] || { echo "::error::tag '$TAG' 与 package.json 版本 '$PKG' 不一致"; exit 1; }
+          [ "$TAG" = "$MAN" ] || { echo "::error::tag '$TAG' 与 manifest.json 版本 '$MAN' 不一致"; exit 1; }
+          [ -n "$MIN" ] || { echo "::error::versions.json 缺少 '$TAG' 条目"; exit 1; }
+          [ "$MIN" = "$MANMIN" ] || echo "::warning::versions.json['$TAG']='$MIN' 与 manifest.json minAppVersion='$MANMIN' 不同"
+
+      - name: Lint, test, typecheck and build
+        run: npm run check
+
+      - name: Verify build output
+        run: |
+          set -euo pipefail
+          for f in main.js manifest.json styles.css; do
+            [ -s "dist/$f" ] || { echo "::error::dist/$f 缺失或为空"; exit 1; }
+          done
+          ls -l dist
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          awk -v pfx="## $TAG" '
+            index($0, pfx) == 1 &&
+            (length($0) == length(pfx) || substr($0, length(pfx) + 1, 1) ~ /^[ \t]$/) { insection = 1; next }
+            insection && index($0, "## ") == 1 { exit }
+            insection { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "使用 CHANGELOG.md 中 $TAG 的条目"
+          else
+            echo "CHANGELOG.md 无 $TAG 条目，回退为自动生成"
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [ -s release-notes.md ]; then
+            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md \
+              --verify-tag --latest dist/main.js dist/manifest.json dist/styles.css
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes \
+              --verify-tag --latest dist/main.js dist/manifest.json dist/styles.css
+          fi
