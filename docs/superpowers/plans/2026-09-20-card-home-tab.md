@@ -3266,12 +3266,16 @@ export class CardView {
 
 - [ ] **Step 2: 接进首页视图**
 
+`render()` 现在会 `await` 多次（读文件、每张卡片都要 `MarkdownRenderer.render`），而它可能被并发调用——`markSelfWriting` 的 350ms 抑制窗口不保证一定能拦住自己写入引发的 `modify` 事件，晚到的那次 `modify` 会再触发一次 `refreshHome()`。两次 `render()` 交错会把卡片建两遍。所以必须先加一个递增令牌，任何一次 `render()` 在每次 `await` 之后都检查自己是否已被后来者取代，过期就直接放弃。
+
 `src/home-view.ts` 的 `render()` 换成真正渲染卡片，并补上 `disposeCards`：
 
 ```ts
   private cardViews: CardView[] = [];
+  private renderToken = 0;
 
   async render(): Promise<void> {
+    const token = ++this.renderToken;
     const root = this.rootEl;
     if (!root) {
       return;
@@ -3283,6 +3287,9 @@ export class CardView {
       return;
     }
     const text = await this.plugin.store.read();
+    if (token !== this.renderToken) {
+      return;
+    }
     if (text === null) {
       this.renderMissingFile(root);
       return;
@@ -3292,6 +3299,9 @@ export class CardView {
     grid.style.gridTemplateColumns = `repeat(${this.plugin.settings.gridColumns}, minmax(0, 1fr))`;
 
     for (const section of sections) {
+      if (token !== this.renderToken) {
+        return;
+      }
       const body = sectionBody(text, section);
       const cardId = `card-${section.index}`;
       const card = new CardView({
@@ -3320,6 +3330,10 @@ export class CardView {
     this.cardViews = [];
   }
 ```
+
+`renderToken` 的两个检查点都不能省：一次在 `await store.read()` 之后（读盘是异步的），一次在每张卡片开始渲染之前（`snippets.resolveAll` 要读用户片段文件、`MarkdownRenderer.render` 也是异步的）。漏掉第二个的话，一个过期的 `render()` 仍会把剩下的卡片追加进已经被新一次 `render()` 清空过的 `grid` 里。
+
+需要它是因为 `markSelfWriting` 的抑制窗口不保证一定能拦住自己写入引发的事件（定时器从 `process()` resolve 之后才开始计时，而 Obsidian 的 `modify` 事件走异步派发）。晚到的那次 `modify` 会再触发一次 `refreshHome()`，于是两次 `render()` 并发——没有令牌就会把卡片建两遍。
 
 `onClose` 里在清空之前先调 `this.disposeCards()`：
 
