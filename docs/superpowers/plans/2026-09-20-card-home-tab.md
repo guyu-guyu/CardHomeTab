@@ -585,6 +585,7 @@ git commit -m "chore: 搭建工程骨架与设置纯函数"
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CARD_META,
+  hasLossyTokens,
   isAutoCss,
   isDefaultMeta,
   parseCardMeta,
@@ -689,6 +690,30 @@ describe("isAutoCss / isDefaultMeta", () => {
     expect(isDefaultMeta(parseCardMeta("%%card: span=2%%")!)).toBe(false);
   });
 });
+
+describe("hasLossyTokens", () => {
+  it("accepts a line the parser can represent exactly", () => {
+    expect(hasLossyTokens("%%card: css=base,text; span=2; icon=lucide-chart%%")).toBe(false);
+    expect(hasLossyTokens("%%card:")).toBe(false);
+  });
+
+  it("accepts a key reordering, which is normalization rather than loss", () => {
+    expect(hasLossyTokens("%%card: foo=bar; span=2%%")).toBe(false);
+  });
+
+  it("flags a value containing the separator", () => {
+    expect(hasLossyTokens("%%card: css=base; note=a;b%%")).toBe(true);
+  });
+
+  it("flags a bare token without a key", () => {
+    expect(hasLossyTokens("%%card: css=base; 说明文字%%")).toBe(true);
+    expect(hasLossyTokens("%%card: =oops%%")).toBe(true);
+  });
+
+  it("flags a repeated key", () => {
+    expect(hasLossyTokens("%%card: css=base; css=text%%")).toBe(true);
+  });
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -790,6 +815,40 @@ export function isDefaultMeta(meta: CardMeta): boolean {
     meta.css.length === 0 && meta.span <= 1 && meta.icon.length === 0 && meta.entries.length === 0
   );
 }
+
+/**
+ * 判断一行 `%%card:` 里是否含有解析器会**丢弃或覆盖**的内容。
+ *
+ * 为什么需要它：`updateCardMeta` 是整行替换，所以解析阶段丢掉的东西会在写盘时
+ * 变成真的丢字。Task 14 的卡片设置弹窗是第一个会把整行重新序列化写回去的地方，
+ * 于是这几类手写内容会在"打开弹窗 → 点应用"之后静默消失，用户什么都没改：
+ *   - 值里带分隔符：`note=a;b` 会被拆成 `note=a` 与孤立的 `b`，后者没有 `=` 被丢掉；
+ *   - 没有 `=` 的孤立片段：`%%card: css=base; 说明文字%%` 里的 `说明文字`；
+ *   - 重复的键：`css=base; css=text` 只能保留后一个。
+ *
+ * 注意**不能**用"重新序列化后与原文是否逐字相同"来判断：键的书写顺序会被规范化
+ * （`foo=bar; span=2` 变成 `span=2; foo=bar`），那是等价重排，不是丢失。
+ */
+export function hasLossyTokens(line: string): boolean {
+  const match = LINE_PATTERN.exec(line);
+  if (!match) {
+    return false;
+  }
+  const body = match[1] ?? "";
+  const keys: string[] = [];
+  for (const rawPart of body.split(";")) {
+    const part = rawPart.trim();
+    if (part.length === 0) {
+      continue;
+    }
+    const separator = part.indexOf("=");
+    if (separator <= 0) {
+      return true;
+    }
+    keys.push(part.slice(0, separator).trim());
+  }
+  return new Set(keys).size !== keys.length;
+}
 ```
 
 `isAutoCss` 问的是"这张卡片请求了自动检测吗"，所以判据是列表里**有没有** `auto`，而不是"是否只有 `auto`"。这两者的差别正是 Task 5 那个缺陷的根源：`resolveSnippetRefs` 曾用 `length === 1 && css[0] === "auto"` 判断，于是 `css=auto,text` 里的 `auto` 被当成片段名丢掉；修好 `resolveSnippetRefs` 之后如果 `isAutoCss` 还留着旧判据，同一个问题就会在下一处被重新引入——两处对"是不是 auto"给出相反答案。Task 14 的卡片设置弹窗可以用它来判断"自动"复选框是否勾选。
@@ -797,7 +856,7 @@ export function isDefaultMeta(meta: CardMeta): boolean {
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/metadata.test.ts`
-Expected: PASS，14 个用例。
+Expected: PASS，19 个用例。
 
 - [ ] **Step 5: 提交**
 
@@ -1087,6 +1146,35 @@ describe("parseDashboard", () => {
     expect(sectionBody(text, sections[0]!)).toBe("正文\r\n");
   });
 });
+
+describe("isSameSection", () => {
+  // 卡片首尾相接，删掉第 k 张后第 k+1 张的 start 正好等于第 k 张原来的 start。
+  // 只看偏移会把继任者当成"还在的那张"，从而把内容写错卡片。
+  const before = "## 甲\n甲内容\n## 乙\n乙内容\n";
+  const after = "## 乙\n乙内容\n";
+
+  it("rejects a different card that happens to reuse the same offset", () => {
+    const opened = parseDashboard(before, 2)[0]!;
+    const current = parseDashboard(after, 2)[0]!;
+    expect(opened.start).toBe(current.start);
+    expect(isSameSection(opened, current)).toBe(false);
+  });
+
+  it("accepts the same card across a re-parse", () => {
+    const opened = parseDashboard(before, 2)[0]!;
+    const current = parseDashboard(before, 2)[0]!;
+    expect(isSameSection(opened, current)).toBe(true);
+  });
+
+  it("rejects a card whose metadata was edited in between", () => {
+    const opened = parseDashboard("## 甲\n内容\n", 2)[0]!;
+    const current = parseDashboard("## 甲\n%%card: css=base%%\n内容\n", 2)[0]!;
+    expect(isSameSection(opened, current)).toBe(false);
+  });
+});
+```
+
+`isSameSection` 放在 `parse.ts` 而不是 `main.ts` 里，是为了能写进 `tests/`：它是纯函数，而 `main.ts` 依赖一堆 Obsidian 运行时、单测里根本 import 不了。这道守卫挡的是"把已删卡片的设置写进继任者并覆盖对方手写内容"这种**静默改写用户文件**的缺陷，只靠自忽略目录里的临时探针验证是不够的——回退成按偏移查找时，CI 必须能红。
 ```
 
 - [ ] **Step 6: 运行测试确认失败**
@@ -1100,7 +1188,7 @@ Expected: FAIL — 无法解析 `../src/dashboard/parse`。
 
 ```ts
 import { isFenceClosing, matchFenceOpening, type Fence } from "../fences";
-import { parseCardMeta, type CardMeta } from "./metadata";
+import { parseCardMeta, serializeCardMeta, type CardMeta } from "./metadata";
 
 export interface CardSection {
   index: number;
@@ -1243,6 +1331,20 @@ export function parseDashboard(text: string, headingLevel: number): CardSection[
 
 export function sectionBody(text: string, section: CardSection): string {
   return text.slice(section.bodyStart, section.end);
+}
+
+/**
+ * 判断"弹窗/渲染时手里的 section"和"重新解析出来的 section"是不是同一张卡。
+ *
+ * 只按 `start` 找是不行的：卡片首尾相接，删掉第 k 张之后第 k+1 张的 `start`
+ * 恰好等于第 k 张原来的 `start`，于是按偏移查找会命中**下一张卡**，
+ * 把已删除卡片的设置写进继任者，并覆盖对方手写的 `%%card: %%` 行。
+ */
+export function isSameSection(opened: CardSection, current: CardSection): boolean {
+  return (
+    opened.title === current.title &&
+    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
+  );
 }
 ```
 
@@ -4943,13 +5045,30 @@ export class CardSettingsModal extends Modal {
   }
 
   async applyCardMeta(section: CardSection, meta: CardMeta): Promise<void> {
-    const sections = await this.store.sections();
+    const text = await this.store.read();
+    if (text === null) {
+      new Notice("没有找到仪表盘文件");
+      return;
+    }
+    const sections = parseDashboard(text, this.settings.cardHeadingLevel);
     const current = sections.find((candidate) => candidate.start === section.start);
-    if (!current || !isSameCard(section, current)) {
+    if (!current || !isSameSection(section, current)) {
       new Notice("这张卡片已经不存在了，可能文件已被改动");
       return;
     }
-    const written = await this.writeDashboard((text) => updateCardMetaInText(text, current, meta));
+    // 写盘是整行替换，所以解析阶段丢掉的东西会变成真的丢字。先确认这一行能被
+    // 无损表示，否则宁愿不写——用户什么都没改就丢手写内容是最不该发生的事。
+    if (current.metaRange) {
+      const rawLine = text.slice(current.metaRange.start, current.metaRange.end);
+      if (hasLossyTokens(rawLine)) {
+        new Notice(
+          "这张卡片的 %%card: 行含有插件无法表示的内容（值里带分号、缺少 = 的片段、或重复的键），" +
+            "为避免覆盖你手写的内容已放弃保存。请先手工调整该行。",
+        );
+        return;
+      }
+    }
+    const written = await this.writeDashboard((t) => updateCardMetaInText(t, current, meta));
     if (!written) {
       return;
     }
@@ -4957,16 +5076,9 @@ export class CardSettingsModal extends Modal {
   }
 ```
 
-**只按 `start` 找是不够的，这一点必须实测记住。** 卡片首尾相接，所以删掉第 k 张之后，第 k+1 张的 `start` 恰好等于第 k 张原来的 `start`——`sections.find(c => c.start === section.start)` 会命中**下一张卡**，于是弹窗里那张卡（其实已经被删了）的设置会被写进它的继任者，并且覆盖对方手写的 `%%card: … %%` 行。所以还要比对标题与规范化后的元数据：
+**只按 `start` 找是不够的，这一点必须实测记住。** 卡片首尾相接，所以删掉第 k 张之后，第 k+1 张的 `start` 恰好等于第 k 张原来的 `start`——`sections.find(c => c.start === section.start)` 会命中**下一张卡**，于是弹窗里那张卡（其实已经被删了）的设置会被写进它的继任者，并且覆盖对方手写的 `%%card: … %%` 行。
 
-```ts
-function isSameCard(opened: CardSection, current: CardSection): boolean {
-  return (
-    opened.title === current.title &&
-    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
-  );
-}
-```
+守卫用 `src/dashboard/parse.ts` 里的 `isSameSection(opened, current)`（比对标题与规范化后的元数据，实现在 Task 3 那一节）。**放在 `parse.ts` 而不是 `main.ts` 是有意的**：`main.ts` 依赖大量 Obsidian 运行时，单测里 import 不了；而这道守卫挡的是"静默改写用户文件"，必须有进仓的测试能在它被回退成按偏移查找时变红。
 
 对不上就只弹提示、不写盘。确认通过后用**新的** `current` 偏移去改，而不是弹窗手里的旧值。
 
@@ -4976,7 +5088,7 @@ function isSameCard(opened: CardSection, current: CardSection): boolean {
   async removeCard(section: CardSection): Promise<void> {
     const sections = await this.store.sections();
     const current = sections.find((candidate) => candidate.start === section.start);
-    if (!current || !isSameCard(section, current)) {
+    if (!current || !isSameSection(section, current)) {
       new Notice("这张卡片已经不存在了，可能文件已被改动");
       return;
     }
@@ -4997,6 +5109,25 @@ import type { CardMeta } from "./dashboard/metadata";
 ```
 
 **为什么用 `Modal` 而不是锚定 popover**：锚定浮层要自己处理定位、外部点击关闭、层级与滚动跟随，而 `Modal` 自带焦点陷阱与 Esc 关闭。卡片设置项不多，用 `Modal` 更省事也更稳。
+
+**顺带修一处跨列数会撑破网格的问题。** 弹窗允许填到 6，而网格列数是 `gridColumns ∈ [1,6]`；`card.ts` 目前无条件写 `grid-column: span N`，于是 3 列网格里填 6 会生成隐式列、横向溢出——而 Task 12 给 `.home-tab-root` 加了 `overflow: clip`，结果是被**裁掉**而不是可滚动。渲染侧要夹一下：给 `CardViewArgs` 增加 `maxSpan: number`（由 `home-view.ts` 传 `this.plugin.settings.gridColumns`），并把
+
+```ts
+    if (args.section.meta.span > 1) {
+      this.el.style.gridColumn = `span ${args.section.meta.span}`;
+    }
+```
+
+改成
+
+```ts
+    const span = Math.min(args.section.meta.span, args.maxSpan);
+    if (span > 1) {
+      this.el.style.gridColumn = `span ${span}`;
+    }
+```
+
+弹窗那边不需要知道列数：多出来的值会被渲染侧静默夹住，只是"填了 6 实际显示 3"。若以后要把它说清楚，给 `CardSettingsArgs` 也传一个 `maxSpan` 并把输入框上限设成它即可。
 
 - [ ] **Step 3: 补样式**
 
@@ -5059,6 +5190,10 @@ import type { CardMeta } from "./dashboard/metadata";
   justify-content: flex-end;
   gap: var(--size-4-2);
   margin-top: var(--size-4-4);
+}
+
+.home-tab-span-input {
+  width: 5em;
 }
 ```
 
