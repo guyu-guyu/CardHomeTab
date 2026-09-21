@@ -9,6 +9,10 @@ import { enableCardDrag } from "../src/card-grid";
  * index 是它自己，所以被拖卡片的下标只能从 dragstart 写下的载荷里取。只信闭包 index 时，
  * computeDropIndex 在目标卡片内部永远返回它自己的槽位，target === index 恒成立，
  * onDrop 一次都不会触发——拖了等于没拖，而且不会有任何报错。
+ *
+ * 另有两道闸门也在这里钉住：dragstart 必须**卡片自己就是拖拽源**（正文里链接的 dragstart
+ * 会冒泡到卡片上），以及 dragover / drop 只认「网格上有我们自己的拖拽标记」——否则从系统里
+ * 拖进来的文件会被卡片当成可落点吞掉，链接拖拽甚至会变成一次真实的换序写盘。
  */
 
 type Listener = (event: unknown) => void;
@@ -84,9 +88,15 @@ class FakeEl {
   }
 
   fire(type: string, event: unknown): void {
-    // 真实浏览器只对 draggable 的元素发起 dragstart；替身照抄这条约束，
+    // 直接在元素上派发时，它就是事件源（真实 DOM 的 `event.target`）；冒泡上来的事件
+    // （卡片正文里的链接）由调用方预先写好 target，这里不覆盖——src 正是靠 target 区分
+    // 「卡片自己是不是拖拽源」，覆盖掉就把要钉的那条分支抹平了。
+    if (event !== null && typeof event === "object" && !("target" in event)) {
+      (event as { target?: unknown }).target = this;
+    }
+    // 真实浏览器只对 draggable 的**拖拽源**发起 dragstart；替身照抄这条约束，
     // 否则「没按抓手也能拖」会被误判成缺陷——代码本身没做这个检查，靠的就是浏览器行为。
-    if (type === "dragstart" && !this.attributes.has("draggable")) {
+    if (type === "dragstart" && !(targetOf(event) ?? this).attributes.has("draggable")) {
       return;
     }
     for (const listener of [...(this.listeners.get(type) ?? [])]) {
@@ -103,6 +113,13 @@ class FakeEl {
   }
 }
 
+/** 替身事件的 `target`（真实 DOM 里指向事件源）。调用方没写就是 undefined。 */
+function targetOf(event: unknown): FakeEl | undefined {
+  return event !== null && typeof event === "object" && "target" in event
+    ? (event as { target?: FakeEl }).target
+    : undefined;
+}
+
 // cardRects 读的是全局 HTMLElement，这里把它换成替身类。用 vi.stubGlobal 而不是直接写
 // globalThis：obsidianmd/no-global-this 是 --max-warnings 0 下的硬门禁，且不可 disable。
 vi.stubGlobal("HTMLElement", FakeEl);
@@ -114,6 +131,9 @@ interface FakeDragEvent {
   clientX: number;
   clientY: number;
   prevented: boolean;
+  /** 事件源。真实浏览器里 dragstart 的 target 是**拖拽源元素**：卡片自己是源时是 cardEl，
+   *  正文里的链接冒泡上来时是那个链接。`fire()` 默认把它设成派发到的元素。 */
+  target?: unknown;
   dataTransfer: {
     payload: string | null;
     effectAllowed: string;
@@ -264,6 +284,43 @@ describe("enableCardDrag", () => {
     h.dispose();
   });
 
+  it("ignores a dragstart that only bubbles through the card from a link in its body", () => {
+    const h = harness();
+    // 卡片正文里的链接本身可拖（浏览器默认行为），它的 dragstart 冒泡到卡片上。
+    // 这里卡片自己没按过抓手、并不 draggable——正是漏口最原始的形状。
+    const link = new FakeEl();
+    link.attributes.set("draggable", "true");
+    const start = dragEvent(0, 0);
+    start.target = link;
+    h.cards[0]!.fire("dragstart", start);
+
+    expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
+    expect(h.grid.dataset["draggingIndex"]).toBeUndefined();
+    expect(start.dataTransfer.payload).toBeNull();
+
+    // 松在另一张卡片上：这不是卡片拖拽，既不该吞掉这次拖拽，也不该调 onDrop 改写文件
+    const drop = dragEvent(290, 50, start.dataTransfer.payload);
+    h.cards[2]!.fire("drop", drop);
+    expect(drop.prevented).toBe(false);
+    expect(h.dropped).toEqual([]);
+    h.dispose();
+  });
+
+  it("ignores dragover and drop while no card drag is in progress", () => {
+    const h = harness();
+    // 从系统里拖一个文件进来（或任何非卡片拖拽）：卡片不能被当成可落点吞掉
+    const over = dragEvent(290, 50);
+    h.cards[2]!.fire("dragover", over);
+    expect(over.prevented).toBe(false);
+
+    // 载荷里带一个看着合法的下标也没用：网格上没有拖拽标记就不认
+    const drop = dragEvent(290, 50, "0");
+    h.cards[2]!.fire("drop", drop);
+    expect(drop.prevented).toBe(false);
+    expect(h.dropped).toEqual([]);
+    h.dispose();
+  });
+
   it("clears the drag state on dragend", () => {
     const h = harness();
     h.handles[0]!.fire("pointerdown", {});
@@ -328,20 +385,34 @@ describe("enableCardDrag", () => {
     handle.fire("pointerdown", {});
     const start = dragEvent(190, 50);
     cards[0]!.fire("dragstart", start);
-    expect(start.prevented).toBe(true);
+    // 禁用分支与「外来拖拽」共用同一个提前返回，不再 preventDefault：它表达的是
+    // 「这次拖拽不归我们管」，而不是「把它取消掉」。
+    expect(start.prevented).toBe(false);
     expect(cards[0]!.hasClass("is-dragging")).toBe(false);
 
-    cards[1]!.fire("dragover", dragEvent(190, 50));
+    const overDisabled = dragEvent(190, 50);
+    cards[1]!.fire("dragover", overDisabled);
+    expect(overDisabled.prevented).toBe(false);
 
-    cards[1]!.fire("drop", dragEvent(190, 50, "0"));
+    const dropDisabled = dragEvent(190, 50, "0");
+    cards[1]!.fire("drop", dropDisabled);
+    expect(dropDisabled.prevented).toBe(false);
     expect(dropped).toEqual([]);
 
     // 解禁后同一次手势应当照常生效
     enabled = true;
-    cards[1]!.fire("dragover", dragEvent(190, 50));
+    // 解禁了但还没有卡片拖拽在途（网格上没标记）：仍然不是可落点
+    const overIdle = dragEvent(190, 50);
+    cards[1]!.fire("dragover", overIdle);
+    expect(overIdle.prevented).toBe(false);
 
     const start2 = dragEvent(0, 0);
     cards[0]!.fire("dragstart", start2);
+    // 这次才是我们自己的拖拽，dragover 必须放行 drop
+    const over = dragEvent(190, 50);
+    cards[1]!.fire("dragover", over);
+    expect(over.prevented).toBe(true);
+
     cards[1]!.fire("drop", dragEvent(190, 50, start2.dataTransfer.payload));
     expect(dropped).toEqual([[0, 1]]);
   });

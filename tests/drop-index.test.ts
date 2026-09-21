@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDropIndex } from "../src/card-grid";
+import { computeDropIndex, resolveDragIndex } from "../src/card-grid";
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({
   left,
@@ -42,5 +42,25 @@ describe("computeDropIndex", () => {
 
   it("handles an empty grid", () => {
     expect(computeDropIndex([], 10, 10)).toBe(0);
+  });
+});
+
+describe("resolveDragIndex", () => {
+  it("prefers the dragstart payload", () => {
+    expect(resolveDragIndex("2", "5")).toBe(2);
+  });
+
+  it("falls back to the grid marker when the payload is empty", () => {
+    expect(resolveDragIndex("", "5")).toBe(5);
+    expect(resolveDragIndex("", undefined)).toBeNull();
+    expect(resolveDragIndex("", "")).toBeNull();
+  });
+
+  it("returns null rather than a guess when neither source is usable", () => {
+    expect(resolveDragIndex("abc", "xyz")).toBeNull();
+  });
+
+  it("accepts a numeric prefix", () => {
+    expect(resolveDragIndex("3abc", undefined)).toBe(3);
   });
 });
