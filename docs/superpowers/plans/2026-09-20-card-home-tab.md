@@ -3070,6 +3070,7 @@ export default class CardHomeTabPlugin extends Plugin {
 - `snippets!: SnippetRegistry` 字段。片段仓库本身是 Task 7 的产物，但视图骨架之后要靠它渲染卡片样式，提前挂上比 Task 10 再回头改 `onload` 更省事。
 - `editCard` / `addCard` / `removeCard` / `openCardSettings` 四个方法，以及 `new-card` 命令。计划原本把它们放在 Task 10，但本任务已经有了"仪表盘文件缺失"提示与 `process()` 失败路径，这两处都需要写文件的入口，提前落地能让失败的调用链完整可测。`openCardSettings` 此时只是弹一个占位 Notice，Task 14 替换。
 - `removeCard` / `addCard` 里对 `store.process()` 的 `await` 都包在 `try/catch` 中并弹 `Notice`：`process()` 是唯一会抛的方法，而 Obsidian 里未处理的 rejection 只会留在控制台（见进度记录第 36 条）。
+- `editCard` 必须先确认 `view.editor` 存在。`MarkdownView.editor` 是 `editMode?.editor` 的 getter（已在本体 `obsidian.asar` 中核实），**阅读视图下它是 `undefined`**，直接 `.offsetToPos()` 会抛 `TypeError`；而 `openLinkText` 只聚焦已打开的标签页、不会切换阅读/编辑模式，所以用户完全可能停在阅读视图。正确做法是先用 `view.setState({ ...view.getState(), mode: "source" }, { history: false })` 切到源码模式，再取 `editor`；若切换后仍拿不到，则直接返回（打开笔记但不定光标，好过崩）。
 
 - [ ] **Step 3: 补样式**
 
