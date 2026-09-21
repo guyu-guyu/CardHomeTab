@@ -1,0 +1,16 @@
+src/card-settings.ts
+  h_d9088715075e51 41-45
+src/main.ts
+  h_d9088715075e51 200-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "21932a13dcb5dee55887ee398e93e2de33f8ee83",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
