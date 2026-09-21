@@ -1,0 +1,32 @@
+README.md
+  h_d9088715075e51 19,178,181-183
+README.zh.md
+  h_d9088715075e51 17,176,179-181
+src/builtin-snippets/text.css
+  h_d9088715075e51 2-4,8
+src/confirm.ts
+  h_d9088715075e51 1-31
+src/dashboard/parse.ts
+  h_d9088715075e51 25-28,41-44
+src/home-view.ts
+  h_d9088715075e51 128
+src/main.ts
+  h_d9088715075e51 3,135-137,139,141,143,189-225,235,238-248,286-289,294-310,312-313,315-321,368-369,376-377
+src/snippets.ts
+  h_d9088715075e51 73-74,76
+styles.css
+  h_d9088715075e51 34-39
+tests/parse.test.ts
+  h_d9088715075e51 146-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cd42edca91d3531b490804ba31a6c51cade19250",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
