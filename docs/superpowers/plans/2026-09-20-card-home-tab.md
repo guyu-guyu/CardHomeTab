@@ -2902,7 +2902,14 @@ export class DashboardStore {
   }
 
   get file(): TFile | null {
-    const found = this.app.vault.getAbstractFileByPath(this.path);
+    const wanted = this.path;
+    // 只认 Markdown。仪表盘路径是用户手填的自由文本，指到 .json / .canvas / .txt 上时，
+    // 首页会把它当卡片笔记解析，而删卡、挪卡、改卡设置都会经 vault.process 把那个文件
+    // **整体改写**成仪表盘内容——那是在改坏用户别的文件。返回 null 让它退化成"文件缺失"。
+    if (!wanted.toLowerCase().endsWith(".md")) {
+      return null;
+    }
+    const found = this.app.vault.getAbstractFileByPath(wanted);
     return found instanceof TFile ? found : null;
   }
 
@@ -2915,6 +2922,9 @@ export class DashboardStore {
   }
 
   async create(): Promise<void> {
+    if (!this.path.toLowerCase().endsWith(".md")) {
+      throw new Error(`仪表盘文件必须是 Markdown 笔记：${this.path}`);
+    }
     if (this.exists()) {
       return;
     }
@@ -5184,6 +5194,23 @@ import type { CardMeta } from "./dashboard/metadata";
   color: var(--text-faint);
 }
 
+.home-tab-snippet-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.home-tab-snippet-settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--size-4-2);
+}
+
+.home-tab-snippet-settings-name {
+  flex: 0 0 auto;
+}
+
 .home-tab-setting-footer {
   display: flex;
   justify-content: flex-end;
@@ -5443,7 +5470,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("文字标识").addText((text) =>
+    new Setting(containerEl).setName("文字标识文案").addText((text) =>
       text.setValue(settings.wordmark).onChange((value) => {
         settings.wordmark = value;
         save();
@@ -5588,15 +5615,23 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName("片段").setHeading();
 
+    // 容器同步建好、异步只往里填内容。若把这个 div 也放进 then 回调里，
+    // `刷新列表` 或 `logoType` 触发的 renderTab() 可能先跑完，于是同一个重建过的
+    // 容器上挂出第二份列表；顺带也让"片段目录"那行不会排在自己的列表上面。
+    const list = containerEl.createDiv({ cls: "home-tab-snippet-settings" });
+
     void this.plugin.snippets.ensureUserNames().then(() => {
-      const list = containerEl.createDiv({ cls: "home-tab-snippet-settings" });
+      if (!list.isConnected) {
+        return;
+      }
+      list.empty();
       for (const info of this.plugin.snippets.list()) {
         const row = list.createDiv({ cls: "home-tab-snippet-settings-row" });
-        row.createSpan({ text: info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}` });
+        row.createSpan({
+          cls: "home-tab-snippet-settings-name",
+          text: info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}`,
+        });
         row.createSpan({ cls: "home-tab-snippet-path", text: info.path ?? "随插件发布" });
-      }
-      if (list.childElementCount === 0) {
-        list.createDiv({ text: "还没有任何片段。" });
       }
     });
 
