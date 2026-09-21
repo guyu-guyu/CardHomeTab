@@ -11,11 +11,14 @@ import { enableCardDrag } from "../src/card-grid";
  * onDrop 一次都不会触发——拖了等于没拖，而且不会有任何报错。
  *
  * 另有两道闸门也在这里钉住：dragstart 必须**卡片自己就是拖拽源**（正文里链接的 dragstart
- * 会冒泡到卡片上），以及 dragover / drop 只认「模块里有在途的拖拽下标」——否则从系统里
- * 拖进来的文件会被卡片当成可落点吞掉，链接拖拽甚至会变成一次真实的换序写盘。
+ * 会冒泡到卡片上），以及 dragover / drop 只认「这次 drag 自己的 dataTransfer 上带着我们的
+ * 私有类型」——否则从系统里拖进来的文件会被卡片当成可落点吞掉，链接拖拽甚至会变成一次真实的
+ * 换序写盘。
  *
- * 在途下标是模块级状态（这样跨网格、跨窗口的拖拽才认得出自己是发起方），所以每条用例都得
- * 自己把状态收干净：一律用真实的 `dragend` 收尾，不额外引出测试专用的复位接口。
+ * 归属标记放在 dataTransfer 上而不是任何可变状态里，是因为它随拖拽生灭：落一次卡片会触发
+ * 重建、源卡片被销毁，`dragend` 可能根本不触发；模块级变量这时会留下过期下标，漏给下一次
+ * 外来拖拽（`does not claim a later foreign drag after a card drag has ended` 钉的就是它）。
+ * 因为它不可变，用例之间也不需要互相收尾。
  */
 
 type Listener = (event: unknown) => void;
@@ -137,30 +140,52 @@ interface FakeDragEvent {
   /** 事件源。真实浏览器里 dragstart 的 target 是**拖拽源元素**：卡片自己是源时是 cardEl，
    *  正文里的链接冒泡上来时是那个链接。`fire()` 默认把它设成派发到的元素。 */
   target?: unknown;
-  dataTransfer: {
-    payload: string | null;
-    effectAllowed: string;
-    setData(format: string, value: string): void;
-    getData(format: string): string;
-  };
+  dataTransfer: FakeDataTransfer;
   preventDefault(): void;
 }
 
-function dragEvent(clientX: number, clientY: number, payload: string | null = null): FakeDragEvent {
+/** 一次拖拽手势的 `dataTransfer` 替身。
+ *
+ *  `types` 是可读的类型列表，`setData` 写进去什么类型就多出什么类型——src 的闸门查的正是
+ *  这个列表（`dragover` 阶段真实浏览器处于保护模式、`getData` 返回空串，但 `types` 依然可读，
+ *  所以替身只要让 `types` 跟随 `setData` 就够了）。
+ *
+ *  真实浏览器里整次拖拽共用一个对象、下一次拖拽换一个全新的对象，这里的用法照抄这条：
+ *  归属信息因此随拖拽生灭，不可能漏给后面的手势——这正是本轮要钉的性质。 */
+interface FakeDataTransfer {
+  readonly types: string[];
+  effectAllowed: string;
+  setData(format: string, value: string): void;
+  getData(format: string): string;
+}
+
+/** `seed` 用来模拟外来的拖拽（例如系统里拖进来的文件只有 text/plain 与 uri-list）。 */
+function fakeDataTransfer(seed: Record<string, string> = {}): FakeDataTransfer {
+  const data = new Map<string, string>(Object.entries(seed));
+  return {
+    get types(): string[] {
+      return [...data.keys()];
+    },
+    effectAllowed: "",
+    setData(format: string, value: string): void {
+      data.set(format, value);
+    },
+    getData(format: string): string {
+      return data.get(format) ?? "";
+    },
+  };
+}
+
+function dragEvent(
+  clientX: number,
+  clientY: number,
+  transfer: FakeDataTransfer = fakeDataTransfer(),
+): FakeDragEvent {
   return {
     clientX,
     clientY,
     prevented: false,
-    dataTransfer: {
-      payload,
-      effectAllowed: "",
-      setData(_format, value) {
-        this.payload = value;
-      },
-      getData() {
-        return this.payload ?? "";
-      },
-    },
+    dataTransfer: transfer,
     preventDefault() {
       this.prevented = true;
     },
@@ -218,7 +243,9 @@ function harness(): Harness {
   };
 }
 
-/** 完整跑一次手势：按被拖卡片的抓手，拖起来，落在目标卡片的 (x, y) 上，再松手。 */
+/** 完整跑一次手势：按被拖卡片的抓手，拖起来，落在目标卡片的 (x, y) 上，再松手。
+ *  整次拖拽共用同一个 `dataTransfer`（真实浏览器就是如此）：dragstart 写进去的私有类型，
+ *  dragover / drop 才读得到。 */
 function dragOnto(
   h: Harness,
   from: number,
@@ -226,13 +253,13 @@ function dragOnto(
   x: number,
   y: number,
 ): FakeDragEvent {
+  const transfer = fakeDataTransfer();
   h.handles[from]!.fire("pointerdown", {});
-  const start = dragEvent(0, 0);
-  h.cards[from]!.fire("dragstart", start);
-  h.cards[to]!.fire("dragover", dragEvent(x, y));
-  const drop = dragEvent(x, y, start.dataTransfer.payload);
+  h.cards[from]!.fire("dragstart", dragEvent(0, 0, transfer));
+  h.cards[to]!.fire("dragover", dragEvent(x, y, transfer));
+  const drop = dragEvent(x, y, transfer);
   h.cards[to]!.fire("drop", drop);
-  h.cards[from]!.fire("dragend", dragEvent(0, 0));
+  h.cards[from]!.fire("dragend", dragEvent(0, 0, transfer));
   return drop;
 }
 
@@ -293,38 +320,41 @@ describe("enableCardDrag", () => {
     // 这里卡片自己没按过抓手、并不 draggable——正是漏口最原始的形状。
     const link = new FakeEl();
     link.attributes.set("draggable", "true");
-    const start = dragEvent(0, 0);
+    const transfer = fakeDataTransfer({ "text/uri-list": "https://example.com/" });
+    const start = dragEvent(0, 0, transfer);
     start.target = link;
     h.cards[0]!.fire("dragstart", start);
 
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
-    expect(start.dataTransfer.payload).toBeNull();
+    // 被挡下的这次 dragstart 一个字节都没往 dataTransfer 里写
+    expect(transfer.types).toEqual(["text/uri-list"]);
 
     // 松在另一张卡片上：这不是卡片拖拽，既不该吞掉这次拖拽，也不该调 onDrop 改写文件
-    const over = dragEvent(290, 50);
+    const over = dragEvent(290, 50, transfer);
     h.cards[2]!.fire("dragover", over);
     expect(over.prevented).toBe(false);
 
-    const drop = dragEvent(290, 50, start.dataTransfer.payload);
+    const drop = dragEvent(290, 50, transfer);
     h.cards[2]!.fire("drop", drop);
     expect(drop.prevented).toBe(false);
     expect(h.dropped).toEqual([]);
 
     // 真实浏览器里链接拖拽收尾也会在拖拽源上派发 dragend（冒泡到卡片），这里照做：
-    // 既走的是真实代码路径，也保证这次手势不给后面的用例留下模块级的在途下标。
-    h.cards[0]!.fire("dragend", dragEvent(0, 0));
+    // 走的是真实代码路径。
+    h.cards[0]!.fire("dragend", dragEvent(0, 0, transfer));
     h.dispose();
   });
 
   it("ignores dragover and drop while no card drag is in progress", () => {
     const h = harness();
     // 从系统里拖一个文件进来（或任何非卡片拖拽）：卡片不能被当成可落点吞掉
-    const over = dragEvent(290, 50);
+    const foreign = fakeDataTransfer({ "text/plain": "0", "text/uri-list": "file:///tmp/a.txt" });
+    const over = dragEvent(290, 50, foreign);
     h.cards[2]!.fire("dragover", over);
     expect(over.prevented).toBe(false);
 
-    // 载荷里带一个看着合法的下标也没用：模块里没有在途下标就不认
-    const drop = dragEvent(290, 50, "0");
+    // 载荷里带一个看着合法的下标也没用：类型列表里没有我们的私有类型就不认
+    const drop = dragEvent(290, 50, foreign);
     h.cards[2]!.fire("drop", drop);
     expect(drop.prevented).toBe(false);
     expect(h.dropped).toEqual([]);
@@ -333,26 +363,52 @@ describe("enableCardDrag", () => {
 
   it("clears the drag state on dragend", () => {
     const h = harness();
+    const transfer = fakeDataTransfer();
     h.handles[0]!.fire("pointerdown", {});
-    h.cards[0]!.fire("dragstart", dragEvent(0, 0));
-    // 拖拽在途：我们自己的 dragover 要被放行，下面 dragend 之后同一次观察必须翻过来
-    const over = dragEvent(290, 50);
+    h.cards[0]!.fire("dragstart", dragEvent(0, 0, transfer));
+    expect(h.cards[0]!.hasClass("is-dragging")).toBe(true);
+    // 拖拽在途：我们自己的 dragover 要被放行
+    const over = dragEvent(290, 50, transfer);
     h.cards[2]!.fire("dragover", over);
     expect(over.prevented).toBe(true);
-    expect(h.cards[0]!.hasClass("is-dragging")).toBe(true);
 
-    h.cards[0]!.fire("dragend", dragEvent(0, 0));
+    h.cards[0]!.fire("dragend", dragEvent(0, 0, transfer));
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
+    h.dispose();
+  });
 
-    // 收尾之后在途下标已清掉：同样的 dragover / drop 不再被认领，也不会调 onDrop
-    const overAfter = dragEvent(290, 50);
-    h.cards[2]!.fire("dragover", overAfter);
-    expect(overAfter.prevented).toBe(false);
+  it("does not claim a later foreign drag after a card drag has ended", () => {
+    // 拖拽的归属只能来自**这次 drag 自己的** dataTransfer，不能寄存在任何可变状态上：
+    // 落一次卡片会触发 refreshHome → 重建卡片，源卡片被销毁，浏览器不会再对已脱离文档的
+    // 节点派发 dragend。归属若留在模块级变量里，下一个外来拖拽就会继承那个过期下标，
+    // 读不到载荷便回落到它，于是 onDrop 真的被调用、仪表盘文件被改序。
+    const h = harness();
 
-    const dropAfter = dragEvent(290, 50, "0");
-    h.cards[2]!.fire("drop", dropAfter);
-    expect(dropAfter.prevented).toBe(false);
-    expect(h.dropped).toEqual([]);
+    // 第一次：一次完整的卡片换序，且**故意不发 dragend**（源卡片即将被销毁）
+    const own = fakeDataTransfer();
+    h.handles[1]!.fire("pointerdown", {});
+    h.cards[1]!.fire("dragstart", dragEvent(0, 0, own));
+    const over = dragEvent(290, 50, own);
+    h.cards[2]!.fire("dragover", over);
+    expect(over.prevented).toBe(true);
+    const drop = dragEvent(290, 50, own);
+    h.cards[2]!.fire("drop", drop);
+    expect(drop.prevented).toBe(true);
+    expect(h.dropped).toEqual([[1, 2]]);
+
+    // 模拟换序后的重建：源卡片连同它的元素一起离开网格，dragend 永远不会来
+    h.grid.children.splice(h.grid.children.indexOf(h.cards[1]!), 1);
+
+    // 第二次：从系统里拖一个文件进来，它带着自己的 dataTransfer（没有任何私有类型）
+    const foreign = fakeDataTransfer({ "text/plain": "0", "text/uri-list": "file:///tmp/a.txt" });
+    const overForeign = dragEvent(290, 50, foreign);
+    h.cards[2]!.fire("dragover", overForeign);
+    expect(overForeign.prevented).toBe(false);
+
+    const dropForeign = dragEvent(290, 50, foreign);
+    h.cards[2]!.fire("drop", dropForeign);
+    expect(dropForeign.prevented).toBe(false);
+    expect(h.dropped).toEqual([[1, 2]]);
     h.dispose();
   });
 
@@ -403,41 +459,45 @@ describe("enableCardDrag", () => {
       });
     }
 
+    const foreign = fakeDataTransfer();
     handle.fire("pointerdown", {});
-    const start = dragEvent(190, 50);
+    const start = dragEvent(190, 50, foreign);
     cards[0]!.fire("dragstart", start);
     // 禁用分支与「外来拖拽」共用同一个提前返回，不再 preventDefault：它表达的是
     // 「这次拖拽不归我们管」，而不是「把它取消掉」。
     expect(start.prevented).toBe(false);
     expect(cards[0]!.hasClass("is-dragging")).toBe(false);
+    // 而且连 dataTransfer 都不该被写：归属标记一个字都没留下
+    expect(foreign.types).toEqual([]);
 
-    const overDisabled = dragEvent(190, 50);
+    const overDisabled = dragEvent(190, 50, foreign);
     cards[1]!.fire("dragover", overDisabled);
     expect(overDisabled.prevented).toBe(false);
 
-    const dropDisabled = dragEvent(190, 50, "0");
+    const dropDisabled = dragEvent(190, 50, foreign);
     cards[1]!.fire("drop", dropDisabled);
     expect(dropDisabled.prevented).toBe(false);
     expect(dropped).toEqual([]);
 
     // 解禁后同一次手势应当照常生效
     enabled = true;
-    // 解禁了但还没有卡片拖拽在途（模块里没有在途下标）：仍然不是可落点
-    const overIdle = dragEvent(190, 50);
+    // 解禁了但这次 drag 依然不是我们的（它的 dataTransfer 上仍没有私有类型）：不是可落点
+    const overIdle = dragEvent(190, 50, foreign);
     cards[1]!.fire("dragover", overIdle);
     expect(overIdle.prevented).toBe(false);
 
-    const start2 = dragEvent(0, 0);
+    // 真正的一次卡片拖拽：换一个全新的 dataTransfer（真实浏览器每次手势都是新的）
+    const own = fakeDataTransfer();
+    const start2 = dragEvent(0, 0, own);
     cards[0]!.fire("dragstart", start2);
     // 这次才是我们自己的拖拽，dragover 必须放行 drop
-    const over = dragEvent(190, 50);
+    const over = dragEvent(190, 50, own);
     cards[1]!.fire("dragover", over);
     expect(over.prevented).toBe(true);
 
-    cards[1]!.fire("drop", dragEvent(190, 50, start2.dataTransfer.payload));
+    cards[1]!.fire("drop", dragEvent(190, 50, own));
     expect(dropped).toEqual([[0, 1]]);
 
-    // 收干净：在途下标是模块级状态，留着会漏给后面的用例
-    cards[0]!.fire("dragend", dragEvent(0, 0));
+    cards[0]!.fire("dragend", dragEvent(0, 0, own));
   });
 });
