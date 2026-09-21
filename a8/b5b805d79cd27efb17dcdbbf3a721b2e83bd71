@@ -1,0 +1,18 @@
+src/errors.ts
+  h_d9088715075e51 1-3
+src/home-view.ts
+  h_d9088715075e51 2,50,59-60,63-65,67-69
+src/main.ts
+  h_d9088715075e51 1,9,12,17,20-21,26,54-61,78-79,81,85-88,119,122,150-164,193,200-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a8b5b805d79cd27efb17dcdbbf3a721b2e83bd71",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
