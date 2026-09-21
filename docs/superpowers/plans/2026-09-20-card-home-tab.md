@@ -2078,58 +2078,67 @@ git commit -m "feat: 用 @scope 把 CSS 片段隔离到单张卡片"
 
 ```css
 /* 卡片内普通 Markdown 排版收敛 */
-.home-card-content .markdown-rendered > :first-child {
+.home-card-content.markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.home-card-content .markdown-rendered > :last-child {
+.home-card-content.markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 
-.home-card-content .markdown-rendered p {
+.home-card-content.markdown-rendered p {
   margin-block: 0.4em;
 }
 
-.home-card-content .markdown-rendered h1,
-.home-card-content .markdown-rendered h2,
-.home-card-content .markdown-rendered h3,
-.home-card-content .markdown-rendered h4 {
+.home-card-content.markdown-rendered h1,
+.home-card-content.markdown-rendered h2,
+.home-card-content.markdown-rendered h3,
+.home-card-content.markdown-rendered h4 {
   margin-block: 0.6em 0.35em;
   font-size: 1.15em;
 }
 
-.home-card-content .markdown-rendered ul,
-.home-card-content .markdown-rendered ol {
+.home-card-content.markdown-rendered ul,
+.home-card-content.markdown-rendered ol {
   padding-inline-start: 1.3em;
   margin-block: 0.3em;
 }
 
-.home-card-content .markdown-rendered table {
+.home-card-content.markdown-rendered table {
   border-collapse: collapse;
   font-size: var(--font-ui-small);
 }
 
-.home-card-content .markdown-rendered th,
-.home-card-content .markdown-rendered td {
+.home-card-content.markdown-rendered th,
+.home-card-content.markdown-rendered td {
   padding: 0.3em 0.6em;
 }
 ```
+
+**必须是 `.home-card-content.markdown-rendered`（同元素复合），不能写成 `.home-card-content .markdown-rendered`（后代）。** Task 10 的 `card.ts` 是把两个类加在**同一个**元素上的：
+
+```ts
+const content = this.el.createDiv({ cls: "home-card-content" });
+content.addClass("markdown-rendered");
+```
+
+写成后代选择器会去找一个带 `markdown-rendered` 的**子元素**，而它永远不存在——整份 `text.css` 与 `code.css` 会变成死规则。后果不小：`css=auto` 永远包含 `builtin:text`，也就是最常用的内置片段完全不生效，代码块也拿不到限高与等宽。`base.css`/`query.css`/`dataview.css` 不受影响，因为它们瞄准的是 `.home-card-content` 内部由 Obsidian 真正发出的类。
 
 `src/builtin-snippets/code.css`：
 
 ```css
 /* 代码块限高内滚，代码统一等宽 */
-.home-card-content .markdown-rendered pre {
+.home-card-content.markdown-rendered pre {
   max-height: 22em;
   overflow: auto;
 }
 
-.home-card-content .markdown-rendered pre > code {
+.home-card-content.markdown-rendered pre > code {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }
 
-.home-card-content .markdown-rendered :not(pre) > code {
+.home-card-content.markdown-rendered :not(pre) > code {
   font-family: var(--font-monospace);
   font-size: 0.9em;
 }
@@ -2325,6 +2334,18 @@ describe("BUILTIN_SNIPPETS", () => {
       for (const selector of selectors) {
         expect(selector, `${name} leaks outside the card: ${selector}`).toContain(
           ".home-card-content",
+        );
+      }
+    }
+  });
+
+  it("never treats markdown-rendered as a descendant, since it sits on the container itself", () => {
+    // card.ts 把 home-card-content 与 markdown-rendered 加在同一个元素上，
+    // 所以 `.home-card-content .markdown-rendered` 去找的是不存在的子元素——整条规则是死的。
+    for (const [name, css] of Object.entries(BUILTIN_SNIPPETS)) {
+      for (const selector of selectorsOf(css)) {
+        expect(selector, `${name} has a dead selector: ${selector}`).not.toContain(
+          ".home-card-content .markdown-rendered",
         );
       }
     }
@@ -3154,6 +3175,21 @@ Expected: 大于 0。
 import { Component, MarkdownRenderer, setIcon, type App } from "obsidian";
 import type { CardSection } from "./dashboard/parse";
 
+/**
+ * 卡片样式只能运行时注入（内容由用户片段文件与每卡 %%card:%% 元数据生成），
+ * 没法放进静态的 styles.css；而 `obsidianmd/no-forbidden-elements` 明确禁止创建
+ * `<style>` 元素。所以改用可构造样式表 + adoptedStyleSheets：不创建任何元素，
+ * 符合规则的意图与字面。
+ *
+ * 平台下限不会因此抬高：卡片样式本身就依赖 `@scope`（Chromium 118+ / Safari 17.2+），
+ * 而 adoptedStyleSheets 从 Chromium 73+ / Safari 16.4+ 就可用——凡是支持 `@scope` 的
+ * 环境都支持它。这个探测仍然保留，作为老环境的降级开关：不支持时只跳过样式注入，
+ * 卡片照常渲染，不抛异常。
+ */
+function supportsConstructableStyleSheets(): boolean {
+  return typeof CSSStyleSheet === "function" && "adoptedStyleSheets" in Document.prototype;
+}
+
 export interface CardCallbacks {
   onEdit(section: CardSection): void;
   onRemove(section: CardSection): void;
@@ -3174,8 +3210,7 @@ export class CardView {
 
   private readonly args: CardViewArgs;
   private readonly contentEl: HTMLElement;
-  private styleEl: HTMLStyleElement | null = null;
-  private component: Component | null = null;
+  private sheet: CSSStyleSheet | null = null;  private component: Component | null = null;
   private renderToken = 0;
 
   constructor(args: CardViewArgs) {
@@ -3215,16 +3250,24 @@ export class CardView {
   }
 
   applyStyles(css: string): void {
-    if (css.trim().length === 0) {
-      this.styleEl?.remove();
-      this.styleEl = null;
+    this.detachStyles();
+    const trimmed = css.trim();
+    if (trimmed.length === 0 || !supportsConstructableStyleSheets()) {
       return;
     }
-    if (!this.styleEl) {
-      this.styleEl = this.el.createEl("style");
-      this.styleEl.dataset["cardCss"] = this.args.cardId;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(trimmed);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    this.sheet = sheet;
+  }
+
+  private detachStyles(): void {
+    const sheet = this.sheet;
+    if (!sheet) {
+      return;
     }
-    this.styleEl.setText(css);
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((item) => item !== sheet);
+    this.sheet = null;
   }
 
   async render(body: string, css: string): Promise<void> {
@@ -3257,8 +3300,7 @@ export class CardView {
     this.renderToken++;
     this.component?.unload();
     this.component = null;
-    this.styleEl?.remove();
-    this.styleEl = null;
+    this.detachStyles();
     this.el.remove();
   }
 }
@@ -3341,11 +3383,14 @@ export class CardView {
 
 ```ts
   async onClose(): Promise<void> {
+    this.renderToken++;
     this.disposeCards();
     this.rootEl = null;
     this.contentEl.empty();
   }
 ```
+
+`onClose` 里那个 `this.renderToken++` 不能省：`render()` 会在每张卡片之间 `await`，视图关闭时很可能还有一次渲染在途，它恢复后会把卡片追加进一个已经脱离文档的 `grid`。递增令牌让在途渲染在下一次检查点直接放弃。
 
 `src/home-view.ts` 顶部需要新增的 import：
 
@@ -3493,7 +3538,7 @@ tag:#项目
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/card.ts src/home-view.ts src/main.ts styles.css
+git add src/card.ts src/home-view.ts src/main.ts esbuild.config.mjs styles.css
 git commit -m "feat: 卡片渲染管线与 MarkdownRenderer 生命周期管理"
 ```
 
