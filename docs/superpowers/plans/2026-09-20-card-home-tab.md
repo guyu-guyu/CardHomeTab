@@ -3220,7 +3220,8 @@ export class CardView {
   private readonly args: CardViewArgs;
   private readonly contentEl: HTMLElement;
   private sheet: CSSStyleSheet | null = null;
-  private destroyed = false;  private component: Component | null = null;
+  private destroyed = false;
+  private component: Component | null = null;
   private renderToken = 0;
 
   constructor(args: CardViewArgs) {
