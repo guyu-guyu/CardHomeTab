@@ -9,6 +9,7 @@ import { DEFAULT_CARD_META } from "./dashboard/metadata";
 import type { CardSection } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
+import { rememberRecentFile } from "./search-bar";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
 import { SnippetRegistry } from "./snippets";
 
@@ -119,6 +120,23 @@ export default class CardHomeTabPlugin extends Plugin {
       return;
     }
     await this.app.workspace.openLinkText(this.store.path, "", false);
+  }
+
+  /** home-view 是用 `void this.plugin.openSearchResult(...)` 调本方法的，裸抛只会留下未处理的
+   *  rejection、点击看上去像没反应；按 `writeDashboard` 的既有做法把它收成 Notice，写盘失败
+   *  则和 `writeDashboard` 返回 false 一样中止后续打开。 */
+  async openSearchResult(path: string, newLeaf: boolean): Promise<void> {
+    this.settings.recentFiles = rememberRecentFile(this.settings, path);
+    try {
+      await this.saveSettings();
+      if (newLeaf) {
+        await this.app.workspace.openLinkText(path, "", "tab");
+      } else {
+        await this.app.workspace.openLinkText(path, "", false);
+      }
+    } catch (error) {
+      new Notice(`CardHomeTab: 无法打开 ${path}：${errorMessage(error)}`);
+    }
   }
 
   refreshHome(): void {
