@@ -41,8 +41,10 @@ function cardRects(gridEl: HTMLElement): Rect[] {
 
 export function enableCardDrag(args: DragArgs): () => void {
   const { gridEl, cardEl, handleEl, index, onDrop, isEnabled } = args;
+  let dragging = false;
 
   const enableDraggable = (): void => {
+    dragging = false;
     cardEl.setAttribute("draggable", "true");
   };
   const disableDraggable = (): void => {
@@ -54,6 +56,7 @@ export function enableCardDrag(args: DragArgs): () => void {
       event.preventDefault();
       return;
     }
+    dragging = true;
     cardEl.addClass("is-dragging");
     // 被拖卡片的下标必须另走一条通道：drop 事件落在指针下方的元素上，也就是「目标卡片」，
     // 那个卡片的闭包 index 是它自己。只信闭包的话，computeDropIndex 在目标卡片内部永远
@@ -78,7 +81,10 @@ export function enableCardDrag(args: DragArgs): () => void {
     if (!isEnabled()) {
       return;
     }
+    // 只为放行落点而存在：不 preventDefault，浏览器就不允许 drop。
     event.preventDefault();
+    // 本版本没有落点指示器，所以这个下标眼下只有测试在读（tests/card-grid-drag.test.ts）；
+    // 它同时也是后续做落点预览的钩子，因此不能按「无人读取」删掉。
     gridEl.dataset["dropIndex"] = String(
       computeDropIndex(cardRects(gridEl), event.clientX, event.clientY),
     );
@@ -100,10 +106,20 @@ export function enableCardDrag(args: DragArgs): () => void {
   };
 
   const handleDragEnd = (): void => {
+    dragging = false;
     cardEl.removeClass("is-dragging");
     delete gridEl.dataset["dropIndex"];
     delete gridEl.dataset["draggingIndex"];
     disableDraggable();
+  };
+
+  /** 只为"按下了把手但并没有真的开始拖"这种收尾而存在。
+   *  少了它，draggable 会一直挂着，直到下一次 dragend 才被清掉——
+   *  期间用户在卡片正文里划选文字会变成拖卡片。 */
+  const resetIfNotDragging = (): void => {
+    if (!dragging) {
+      disableDraggable();
+    }
   };
 
   handleEl.addEventListener("pointerdown", enableDraggable);
@@ -111,6 +127,12 @@ export function enableCardDrag(args: DragArgs): () => void {
   cardEl.addEventListener("dragover", handleDragOver);
   cardEl.addEventListener("drop", handleDrop);
   cardEl.addEventListener("dragend", handleDragEnd);
+  // 挂在 document 上而不是把手上：手指可能松在把手外面。
+  // 之所以要判 typeof：测试跑在 node 里（仓库不装 jsdom），没有 document；浏览器里恒有。
+  if (typeof document !== "undefined") {
+    document.addEventListener("pointerup", resetIfNotDragging);
+    document.addEventListener("pointercancel", resetIfNotDragging);
+  }
 
   return () => {
     handleEl.removeEventListener("pointerdown", enableDraggable);
@@ -118,5 +140,9 @@ export function enableCardDrag(args: DragArgs): () => void {
     cardEl.removeEventListener("dragover", handleDragOver);
     cardEl.removeEventListener("drop", handleDrop);
     cardEl.removeEventListener("dragend", handleDragEnd);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("pointerup", resetIfNotDragging);
+      document.removeEventListener("pointercancel", resetIfNotDragging);
+    }
   };
 }
