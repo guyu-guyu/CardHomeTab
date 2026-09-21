@@ -3603,7 +3603,7 @@ interface DragArgs {
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { computeDropIndex } from "../src/card-grid";
+import { computeDropIndex, resolveDragIndex } from "../src/card-grid";
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({
   left,
@@ -3643,6 +3643,26 @@ describe("computeDropIndex", () => {
 
   it("handles an empty grid", () => {
     expect(computeDropIndex([], 10, 10)).toBe(0);
+  });
+});
+
+describe("resolveDragIndex", () => {
+  it("prefers the dragstart payload", () => {
+    expect(resolveDragIndex("2", "5")).toBe(2);
+  });
+
+  it("falls back to the grid marker when the payload is empty", () => {
+    expect(resolveDragIndex("", "5")).toBe(5);
+    expect(resolveDragIndex("", undefined)).toBeNull();
+    expect(resolveDragIndex("", "")).toBeNull();
+  });
+
+  it("returns null rather than a guess when neither source is usable", () => {
+    expect(resolveDragIndex("abc", "xyz")).toBeNull();
+  });
+
+  it("accepts a numeric prefix", () => {
+    expect(resolveDragIndex("3abc", undefined)).toBe(3);
   });
 });
 ```
@@ -3695,6 +3715,19 @@ function cardRects(gridEl: HTMLElement): Rect[] {
     .map((card) => card.getBoundingClientRect());
 }
 
+/**
+ * 把 dragstart 载荷与网格上的备份下标解析成"被拖卡片的起始下标"。
+ *
+ * 两路都拿不到就返回 `null`——**不要**退回调用方自己的 `index`：drop 事件落在目标卡片上，
+ * 那张卡片闭包里的 `index` 就是它自己，拿它当 `from` 会让 `target === from` 恒成立、
+ * `onDrop` 永不触发，正好退化成"拖了等于没拖"那个静默失效。
+ */
+export function resolveDragIndex(payload: string, marker: string | undefined): number | null {
+  const raw = payload.length > 0 ? payload : (marker ?? "");
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 export function enableCardDrag(args: DragArgs): () => void {
   const { gridEl, cardEl, handleEl, onDrop, isEnabled } = args;
   let dragging = false;
@@ -3715,9 +3748,16 @@ export function enableCardDrag(args: DragArgs): () => void {
     }
   };
 
+  /**
+   * 只有"卡片自己就是拖拽源"才算卡片拖拽。
+   *
+   * 卡片正文里的链接本身可拖，它的 `dragstart` 会冒泡到卡片上；不挡住的话，一次链接
+   * （或选区）拖拽会被当成卡片拖拽：卡片被加上 `is-dragging`，本卡下标被写进
+   * `gridEl.dataset`，随后在别的卡片上松手就会真的调 `onDrop`、改写仪表盘文件。
+   * 卡片是拖拽源时 `event.target` 就是 cardEl；链接是拖拽源时 target 是那个 `<a>`。
+   */
   const handleDragStart = (event: DragEvent): void => {
-    if (!isEnabled()) {
-      event.preventDefault();
+    if (!isEnabled() || event.target !== cardEl) {
       return;
     }
     dragging = true;
@@ -3730,23 +3770,16 @@ export function enableCardDrag(args: DragArgs): () => void {
   };
 
   /**
-   * 被拖卡片的**起始**下标必须另走一条通道。
+   * 网格上有"拖拽中"的标记，是"这次 drag 是不是我们自己发起"的**共享**信号。
    *
-   * drop 事件落在指针下方的元素上，也就是"目标卡片"，所以那个卡片自己的闭包 `index`
-   * 是它自己；而 `computeDropIndex` 在目标卡片内部算出来的也是它自己的槽位——
-   * 两者恒等，`target === index` 永远成立，`onDrop` 一次都不会触发，**拖了等于没拖**，
-   * 而且没有任何报错。所以优先读 `dataTransfer`（`dragstart` 里已经写入，标准通道），
-   * 读不到再退回网格上的备份（部分平台/情况下 drop 阶段的 `getData` 返回空串）。
+   * 不能用各卡闭包里的 `dragging`：drop 落在目标卡片上，那张卡的 `dragging` 必然为 false。
+   * 同时这也让 `dragover` 只为我们自己的拖拽 `preventDefault()`——否则从系统里拖进来的
+   * 文件会被卡片当成可落点吞掉。
    */
-  const draggedIndex = (event: DragEvent): number => {
-    const payload = event.dataTransfer?.getData("text/plain") ?? "";
-    const raw = payload.length > 0 ? payload : (gridEl.dataset["draggingIndex"] ?? "");
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isNaN(parsed) ? args.index : parsed;
-  };
+  const isCardDrag = (): boolean => gridEl.dataset["draggingIndex"] !== undefined;
 
   const handleDragOver = (event: DragEvent): void => {
-    if (!isEnabled()) {
+    if (!isEnabled() || !isCardDrag()) {
       return;
     }
     // 只为放行 drop；不做落点预览，所以不在这里写任何 dataset。
@@ -3754,11 +3787,17 @@ export function enableCardDrag(args: DragArgs): () => void {
   };
 
   const handleDrop = (event: DragEvent): void => {
-    if (!isEnabled()) {
+    if (!isEnabled() || !isCardDrag()) {
       return;
     }
     event.preventDefault();
-    const from = draggedIndex(event);
+    const from = resolveDragIndex(
+      event.dataTransfer?.getData("text/plain") ?? "",
+      gridEl.dataset["draggingIndex"],
+    );
+    if (from === null) {
+      return;
+    }
     let target = computeDropIndex(cardRects(gridEl), event.clientX, event.clientY);
     if (target > from) {
       target -= 1;
@@ -3775,9 +3814,10 @@ export function enableCardDrag(args: DragArgs): () => void {
     disableDraggable();
   };
 
+  const ownerDocument = handleEl.ownerDocument;
   handleEl.addEventListener("pointerdown", enableDraggable);
-  document.addEventListener("pointerup", resetIfNotDragging);
-  document.addEventListener("pointercancel", resetIfNotDragging);
+  ownerDocument.addEventListener("pointerup", resetIfNotDragging);
+  ownerDocument.addEventListener("pointercancel", resetIfNotDragging);
   cardEl.addEventListener("dragstart", handleDragStart);
   cardEl.addEventListener("dragover", handleDragOver);
   cardEl.addEventListener("drop", handleDrop);
@@ -3785,8 +3825,8 @@ export function enableCardDrag(args: DragArgs): () => void {
 
   return () => {
     handleEl.removeEventListener("pointerdown", enableDraggable);
-    document.removeEventListener("pointerup", resetIfNotDragging);
-    document.removeEventListener("pointercancel", resetIfNotDragging);
+    ownerDocument.removeEventListener("pointerup", resetIfNotDragging);
+    ownerDocument.removeEventListener("pointercancel", resetIfNotDragging);
     cardEl.removeEventListener("dragstart", handleDragStart);
     cardEl.removeEventListener("dragover", handleDragOver);
     cardEl.removeEventListener("drop", handleDrop);
@@ -3804,7 +3844,9 @@ export function enableCardDrag(args: DragArgs): () => void {
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/drop-index.test.ts`
-Expected: PASS，6 个用例。
+Expected: PASS，10 个用例。
+
+`resolveDragIndex` 是纯函数，所以拖拽的**下标解析策略**可以脱离 DOM 直接单测。它的第三条用例是重点：两路都拿不到时必须返回 `null` 让 `handleDrop` 直接跳过，绝不能退回调用方的 `index`——那正是"拖了等于没拖"那个静默失效的原始形态。`computeDropIndex` 的 6 条加上这 4 条，一共 10 条。
 
 - [ ] **Step 5: 接进卡片与首页**
 
