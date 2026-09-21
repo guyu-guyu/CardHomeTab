@@ -11,7 +11,7 @@ Turn one Markdown note into a start page. CardHomeTab splits that note by headin
 - A home view with a logo (built-in Lucide icon, vault image or URL), a wordmark, and a background image with separate light/dark sources, blur and dimming.
 - Fuzzy search over vault filenames, plus bookmarks and recent files. `Enter` opens the current tab, `Ctrl`/`Cmd`+`Enter` a new tab.
 - Card content comes from a single dashboard note, split by a configurable heading level.
-- Any content type renders, because rendering goes through Obsidian's `MarkdownRenderer`: plain text, fenced code, `query` blocks, `base` blocks, and `dataview`/`dataviewjs` blocks when Dataview is installed.
+- Most content types render, because rendering goes through Obsidian's `MarkdownRenderer`: plain text, fenced code, `base` blocks, and `dataview`/`dataviewjs` blocks when Dataview is installed. The core `query` embedded-search block is the exception — inside a card it shows up as a plain code block with the query source rather than search results (see the limitations).
 - Cards live in a real note, so `![[table.base]]`, `![[image.png]]` and relative links resolve against the dashboard note's folder.
 - Per-card metadata in a native `%%card: %%` comment: CSS snippets, column span, and icon.
 - Five built-in CSS snippets grouped by the content type they target, plus your own snippets from the snippets folder.
@@ -181,6 +181,7 @@ Commands (the interface is in Chinese):
 11. **The card action bar is hover-only.** It is revealed by `:hover`/`:focus-within` on the card, and its controls are non-focusable `span`s. A touch device has no hover and there is no keyboard route to them, so settings, edit, delete and drag are desktop-only. The cards themselves render on mobile.
 12. **The dashboard file must be a Markdown note.** A path that does not end in `.md` is refused: the home view reports the file as missing, and creating it fails with a notice. It cannot be used to point the plugin at, for instance, a `.canvas`.
 13. **Two commands create the dashboard file when it is missing.** `新建卡片` and `在标签页打开仪表盘` create the note at whatever path the setting currently holds, without asking; `新建卡片` then appends a card to it. A typo in the path leaves a stray note behind instead of failing.
+14. **The core `query` embedded-search block produces no results.** Obsidian only turns a `query` block into an embedded search under a reading-mode `MarkdownView` host. The plugin renders through the static `MarkdownRenderer.render`, which has no such host, so a `query` block falls back to a plain code block showing the query source instead of search results. `dataview` and `base` blocks are unaffected (they are properly registered code-block processors). Use a `dataview` or `base` block for a dynamic list. Consequently the `builtin:query` snippet currently has nothing to act on.
 
 ## License
 
