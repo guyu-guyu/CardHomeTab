@@ -3186,8 +3186,17 @@ import type { CardSection } from "./dashboard/parse";
  * 环境都支持它。这个探测仍然保留，作为老环境的降级开关：不支持时只跳过样式注入，
  * 卡片照常渲染，不抛异常。
  */
+let styleSheetSupport: boolean | null = null;
+
 function supportsConstructableStyleSheets(): boolean {
-  return typeof CSSStyleSheet === "function" && "adoptedStyleSheets" in Document.prototype;
+  if (styleSheetSupport !== null) {
+    return styleSheetSupport;
+  }
+  styleSheetSupport =
+    typeof CSSStyleSheet === "function" &&
+    "adoptedStyleSheets" in Document.prototype &&
+    "replaceSync" in CSSStyleSheet.prototype;
+  return styleSheetSupport;
 }
 
 export interface CardCallbacks {
@@ -3210,7 +3219,8 @@ export class CardView {
 
   private readonly args: CardViewArgs;
   private readonly contentEl: HTMLElement;
-  private sheet: CSSStyleSheet | null = null;  private component: Component | null = null;
+  private sheet: CSSStyleSheet | null = null;
+  private destroyed = false;  private component: Component | null = null;
   private renderToken = 0;
 
   constructor(args: CardViewArgs) {
@@ -3250,6 +3260,9 @@ export class CardView {
   }
 
   applyStyles(css: string): void {
+    if (this.destroyed) {
+      return;
+    }
     this.detachStyles();
     const trimmed = css.trim();
     if (trimmed.length === 0 || !supportsConstructableStyleSheets()) {
@@ -3271,6 +3284,9 @@ export class CardView {
   }
 
   async render(body: string, css: string): Promise<void> {
+    if (this.destroyed) {
+      return;
+    }
     const token = ++this.renderToken;
     this.component?.unload();
     this.component = null;
@@ -3290,13 +3306,20 @@ export class CardView {
       component,
     );
 
-    if (token !== this.renderToken) {
+    if (token !== this.renderToken || this.destroyed) {
+      if (this.component === component) {
+        this.component = null;
+      }
       component.unload();
       holder.remove();
+      if (this.destroyed) {
+        this.detachStyles();
+      }
     }
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.renderToken++;
     this.component?.unload();
     this.component = null;
@@ -3307,6 +3330,10 @@ export class CardView {
 ```
 
 这里是本任务唯一容易写错的地方：每次渲染都新建自己的 `holder` 子元素并持有自己的 `Component`。并发渲染时，先发起的那次回来发现 token 已过期，就卸载自己的 Component 并删掉自己的 `holder`，不会污染后发起的那次的内容。
+
+`destroyed` 标志位是必需的，不是冗余防御。`HomeView.render` 在 `cardViews.push(card)` 与 `grid.appendChild(card.el)` **之后**才 `await`，而它的令牌检查在每次循环的**开头**——所以存在这样一条交错：旧一次渲染建好卡片、挂上 DOM，然后停在 `await snippets.resolveAll(...)`；此时新一次渲染（或 `onClose`）跑 `disposeCards()` 把这张卡销毁；旧渲染恢复后继续调 `card.render(...)`，而 `destroy()` 已经把 `renderToken` 加过一，于是 `++this.renderToken` 让局部 token 等于新值、过期检查通过——结果是：已经脱离文档的容器被重新填充、一个新的 `Component` 被 load、并通过 `applyStyles` 往 `document.adoptedStyleSheets` 里再插一张表。这张卡已经不在 `cardViews` 里，之后任何 `disposeCards()` 都碰不到它，于是 Component、分离的 DOM 子树、以及那张全局样式表全部泄漏到会话结束。更麻烦的是 scope 根用的是 `card-${section.index}`，泄漏的那张表会和**同 id 的活卡片**抢规则，而且它加入得更晚、因此胜出——用户刚改掉某张卡的片段却看不到变化。
+
+结尾的 `if (this.component === component)` 判断也不能省：并发渲染时 `this.component` 可能已经指向更新那个 Component，直接置 null 会让新渲染的 Component 失去引用而永远不被卸载。这同时消掉了"同一个 Component 被 `unload()` 两次"的问题（`Component.unload()` 不保证幂等，重复调用会让 MarkdownRenderer 的子组件再跑一遍 `onunload`）。
 
 - [ ] **Step 2: 接进首页视图**
 
@@ -3363,6 +3390,9 @@ export class CardView {
       grid.appendChild(card.el);
 
       const parts = await this.plugin.snippets.resolveAll(resolveSnippetRefs(section.meta, body));
+      if (token !== this.renderToken) {
+        return;
+      }
       await card.render(body, scopedStylesheet(parts, cardId));
     }
   }
