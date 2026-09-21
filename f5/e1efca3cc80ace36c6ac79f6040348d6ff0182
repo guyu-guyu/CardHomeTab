@@ -1,0 +1,14 @@
+docs/superpowers/plans/2026-09-20-card-home-tab.md
+  h_d9088715075e51 588,693-716,818-851,859,1149-1177,1191,1335-1348,5048-5053,5055,5059-5071,5079,5081,5091,5113-5131,5194-5197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f5e1efca3cc80ace36c6ac79f6040348d6ff0182",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
