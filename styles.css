@@ -98,3 +98,11 @@
 .home-card-content-inner > :last-child {
   margin-bottom: 0;
 }
+
+.home-card.is-dragging {
+  opacity: 0.45;
+}
+
+.home-card-drag-area {
+  display: inline-flex;
+}

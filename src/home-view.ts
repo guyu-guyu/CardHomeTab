@@ -80,10 +80,15 @@ export class HomeView extends ItemView {
         section,
         dashboardPath: this.plugin.store.path,
         cardId,
+        index: section.index,
+        gridEl: grid,
         callbacks: {
           onEdit: (target) => void this.plugin.editCard(target),
           onRemove: (target) => void this.plugin.removeCard(target),
           onSettings: (target) => this.plugin.openCardSettings(target),
+        },
+        onDrop: (from, to) => {
+          void this.plugin.moveCard(from, to);
         },
       });
       this.cardViews.push(card);

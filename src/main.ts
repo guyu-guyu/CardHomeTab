@@ -2,6 +2,7 @@ import { MarkdownView, Notice, Plugin, type WorkspaceLeaf } from "obsidian";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
+  moveCard as moveCardInText,
   removeCard as removeCardInText,
 } from "./dashboard/edit";
 import { DEFAULT_CARD_META } from "./dashboard/metadata";
@@ -158,6 +159,21 @@ export default class CardHomeTabPlugin extends Plugin {
 
   async removeCard(section: CardSection): Promise<void> {
     const written = await this.writeDashboard((text) => removeCardInText(text, section));
+    if (!written) {
+      return;
+    }
+    this.refreshHome();
+  }
+
+  async moveCard(from: number, to: number): Promise<void> {
+    const sections = await this.store.sections();
+    const last = sections.length - 1;
+    if (from === to || from < 0 || to < 0 || from > last || to > last) {
+      return;
+    }
+    // 走 writeDashboard 而不是裸 process：io.ts 的 process() 在文件缺失时会抛，
+    // 而 home-view 是 `void this.plugin.moveCard(...)` 调用，裸抛只会留下未处理的 rejection。
+    const written = await this.writeDashboard((text) => moveCardInText(text, sections, from, to));
     if (!written) {
       return;
     }

@@ -1,4 +1,5 @@
 import { Component, MarkdownRenderer, setIcon, type App } from "obsidian";
+import { enableCardDrag } from "./card-grid";
 import type { CardSection } from "./dashboard/parse";
 
 /**
@@ -36,15 +37,20 @@ export interface CardViewArgs {
   section: CardSection;
   dashboardPath: string;
   cardId: string;
+  index: number;
+  gridEl: HTMLElement;
   callbacks: CardCallbacks;
+  onDrop: (from: number, to: number) => void;
 }
 
 export class CardView {
   readonly el: HTMLElement;
   readonly handleEl: HTMLElement;
+  dragEnabled = true;
 
   private readonly args: CardViewArgs;
   private readonly contentEl: HTMLElement;
+  private disposeDrag: () => void = () => undefined;
   private sheet: CSSStyleSheet | null = null;
   private destroyed = false;
   private component: Component | null = null;
@@ -84,6 +90,15 @@ export class CardView {
     if (args.section.meta.span > 1) {
       this.el.style.gridColumn = `span ${args.section.meta.span}`;
     }
+
+    this.disposeDrag = enableCardDrag({
+      gridEl: args.gridEl,
+      cardEl: this.el,
+      handleEl: this.handleEl,
+      index: args.index,
+      onDrop: args.onDrop,
+      isEnabled: () => this.dragEnabled,
+    });
   }
 
   applyStyles(css: string): void {
@@ -151,6 +166,7 @@ export class CardView {
     this.component?.unload();
     this.component = null;
     this.detachStyles();
+    this.disposeDrag();
     this.el.remove();
   }
 }
