@@ -3647,21 +3647,17 @@ describe("computeDropIndex", () => {
 });
 
 describe("resolveDragIndex", () => {
-  it("prefers the dragstart payload", () => {
-    expect(resolveDragIndex("2", 5)).toBe(2);
-  });
-
-  it("falls back to the in-flight index when the payload is empty", () => {
-    expect(resolveDragIndex("", 5)).toBe(5);
-  });
-
-  it("returns null rather than a guess when neither source is usable", () => {
-    expect(resolveDragIndex("", null)).toBeNull();
-    expect(resolveDragIndex("abc", null)).toBeNull();
+  it("parses a numeric payload", () => {
+    expect(resolveDragIndex("2")).toBe(2);
   });
 
   it("accepts a numeric prefix", () => {
-    expect(resolveDragIndex("3abc", null)).toBe(3);
+    expect(resolveDragIndex("3abc")).toBe(3);
+  });
+
+  it("returns null rather than a guess when the payload is unusable", () => {
+    expect(resolveDragIndex("")).toBeNull();
+    expect(resolveDragIndex("abc")).toBeNull();
   });
 });
 ```
@@ -3714,24 +3710,35 @@ function cardRects(gridEl: HTMLElement): Rect[] {
     .map((card) => card.getBoundingClientRect());
 }
 
-/**
- * 当前正在被拖拽的卡片下标。一次只可能有一次拖拽，所以状态放模块级，
- * **不要**放在 `gridEl.dataset` 上：那样它只对"源网格"可见，而 `dragover`/`drop`
- * 是**目标**卡片的处理器在跑，两个网格（例如分屏或弹出窗口里的第二个首页视图）
- * 之间拖拽就会被自己的闸门挡掉。
- */
-let activeDragIndex: number | null = null;
+/** 卡片拖拽专用的私有数据类型。 */
+export const CARD_DRAG_TYPE = "application/x-card-home-tab-card";
 
 /**
- * 把 dragstart 载荷与拖拽中的下标解析成"被拖卡片的起始下标"。
+ * "这次 drag 是不是我们自己发起的"必须以 **drag 自身的** `dataTransfer` 类型标记为准，
+ * 不能靠任何可变状态。
  *
- * 两路都拿不到就返回 `null`——**不要**退回调用方自己的 `index`：drop 事件落在目标卡片上，
- * 那张卡片闭包里的 `index` 就是它自己，拿它当 `from` 会让 `target === from` 恒成立、
- * `onDrop` 永不触发，正好退化成"拖了等于没拖"那个静默失效。
+ * 模块级变量尤其不行：`onDrop` → `moveCard` → `refreshHome` 会在拖拽还没结束时就把源卡片
+ * 销毁掉（`disposeCards()`），源卡片上的 `dragend` 可能因此根本不触发，过期下标就留给了
+ * 下一次外来拖拽——比如从系统里拖一个文件进页面，`getData` 读不到东西就回落到那个过期下标，
+ * 于是 `onDrop` 真的被调用、仪表盘文件被改序。放在 `gridEl.dataset` 上也只对"源网格"可见，
+ * 会挡掉跨首页视图（分屏、弹出窗口）的拖拽。
+ *
+ * `dragover` 阶段 `dataTransfer` 处于保护模式，`getData` 返回空串，但 **`types` 依然可读**，
+ * 所以闸门查 `types`、取值放到 `drop` 里用 `getData`。
  */
-export function resolveDragIndex(payload: string, marker: number | null): number | null {
+const isCardDrag = (event: DragEvent): boolean =>
+  event.dataTransfer?.types.includes(CARD_DRAG_TYPE) ?? false;
+
+/**
+ * 把 dragstart 载荷解析成"被拖卡片的起始下标"。
+ *
+ * 解析不出来就返回 `null`，调用方直接跳过——**不要**退回调用方自己的 `index`：
+ * drop 事件落在目标卡片上，那张卡片闭包里的 `index` 就是它自己，拿它当 `from`
+ * 会让 `target === from` 恒成立、`onDrop` 永不触发，正好退化成"拖了等于没拖"。
+ */
+export function resolveDragIndex(payload: string): number | null {
   const parsed = Number.parseInt(payload, 10);
-  return Number.isNaN(parsed) ? marker : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 export function enableCardDrag(args: DragArgs): () => void {
@@ -3758,8 +3765,8 @@ export function enableCardDrag(args: DragArgs): () => void {
    * 只有"卡片自己就是拖拽源"才算卡片拖拽。
    *
    * 卡片正文里的链接本身可拖，它的 `dragstart` 会冒泡到卡片上；不挡住的话，一次链接
-   * （或选区）拖拽会被当成卡片拖拽：卡片被加上 `is-dragging`，本卡下标被记为拖拽源，
-   * 随后在别的卡片上松手就会真的调 `onDrop`、改写仪表盘文件。
+   * （或选区）拖拽会被当成卡片拖拽：卡片被加上 `is-dragging`，随后在别的卡片上松手
+   * 就会真的调 `onDrop`、改写仪表盘文件。
    * 卡片是拖拽源时 `event.target` 就是 cardEl；链接是拖拽源时 target 是那个 `<a>`。
    *
    * **不要**改成 `cardEl.contains(event.target)`：链接正是 cardEl 的后代，那样等于把
@@ -3770,25 +3777,15 @@ export function enableCardDrag(args: DragArgs): () => void {
       return;
     }
     dragging = true;
-    activeDragIndex = args.index;
     cardEl.addClass("is-dragging");
     if (event.dataTransfer) {
-      event.dataTransfer.setData("text/plain", String(args.index));
+      event.dataTransfer.setData(CARD_DRAG_TYPE, String(args.index));
       event.dataTransfer.effectAllowed = "move";
     }
   };
 
-  /**
-   * "这次 drag 是不是我们自己发起的"。
-   *
-   * 不能用各卡闭包里的 `dragging`：drop 落在目标卡片上，那张卡的 `dragging` 必然为 false。
-   * 同时这也让 `dragover` 只为我们自己的拖拽 `preventDefault()`——否则从系统里拖进来的
-   * 文件会被卡片当成可落点吞掉。
-   */
-  const isCardDrag = (): boolean => activeDragIndex !== null;
-
   const handleDragOver = (event: DragEvent): void => {
-    if (!isEnabled() || !isCardDrag()) {
+    if (!isEnabled() || !isCardDrag(event)) {
       return;
     }
     // 只为放行 drop；不做落点预览。
@@ -3796,11 +3793,11 @@ export function enableCardDrag(args: DragArgs): () => void {
   };
 
   const handleDrop = (event: DragEvent): void => {
-    if (!isEnabled() || !isCardDrag()) {
+    if (!isEnabled() || !isCardDrag(event)) {
       return;
     }
     event.preventDefault();
-    const from = resolveDragIndex(event.dataTransfer?.getData("text/plain") ?? "", activeDragIndex);
+    const from = resolveDragIndex(event.dataTransfer?.getData(CARD_DRAG_TYPE) ?? "");
     if (from === null) {
       return;
     }
@@ -3815,7 +3812,6 @@ export function enableCardDrag(args: DragArgs): () => void {
 
   const handleDragEnd = (): void => {
     dragging = false;
-    activeDragIndex = null;
     cardEl.removeClass("is-dragging");
     disableDraggable();
   };
