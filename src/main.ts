@@ -102,15 +102,13 @@ export default class CardHomeTabPlugin extends Plugin {
       await this.app.workspace.revealLeaf(existing);
       return;
     }
-    if (this.unloaded) {
-      return;
-    }
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.setViewState({ type: HOME_VIEW_TYPE, active: true });
   }
 
   async openDashboardNote(): Promise<void> {
-    if (!(await this.ensureDashboardFile())) {
+    const ready = await this.ensureDashboardFile();
+    if (!ready || this.unloaded) {
       return;
     }
     await this.app.workspace.openLinkText(this.store.path, "", false);
@@ -140,9 +138,10 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   /** 「新建卡片」命令在 `onload` 里注册，会调用 `addCard`；Task 10 只需把卡片菜单接到
-   *  `removeCard` / `editCard` / `openCardSettings`。三个写操作都必须经 `writeDashboard()`，
-   *  因为 `process()` 是唯一会抛的成员，它的失败必须以 Notice 呈现，而不是留下未处理的
-   *  rejection。 */
+   *  `removeCard` / `editCard` / `openCardSettings`。`addCard` 与 `removeCard` 两个写操作都经
+   *  `writeDashboard()`，因为 `process()` 是唯一会抛的成员，它的失败必须以 Notice 呈现，
+   *  而不是留下未处理的 rejection；`editCard` 与 `openCardSettings` 不写文件，文件的创建由
+   *  `ensureDashboardFile()` 负责。 */
   async addCard(): Promise<void> {
     if (!(await this.ensureDashboardFile())) {
       return;
@@ -166,21 +165,22 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   async editCard(section: CardSection): Promise<void> {
-    await this.openDashboardNote();
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) {
-      return;
+    try {
+      await this.openDashboardNote();
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!view) {
+        return;
+      }
+      if (view.getMode() === "preview") {
+        await view.setState({ ...view.getState(), mode: "source" }, { history: false });
+      }
+      const editor = view.editor;
+      const line = editor.offsetToPos(section.start).line;
+      editor.setCursor({ line, ch: 0 });
+      editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
+    } catch (error) {
+      new Notice(`无法定位到卡片：${errorMessage(error)}`);
     }
-    if (!view.editor) {
-      await view.setState({ ...view.getState(), mode: "source" }, { history: false });
-    }
-    const editor = view.editor;
-    if (!editor) {
-      return;
-    }
-    const line = editor.offsetToPos(section.start).line;
-    editor.setCursor({ line, ch: 0 });
-    editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
   }
 
   openCardSettings(section: CardSection): void {
@@ -215,11 +215,14 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   private maybeReplaceEmptyLeaf(): void {
-    if (this.replacingLeaf || !this.settings.replaceNewTabs) {
+    if (!this.settings.replaceNewTabs) {
       return;
     }
     const leaf = this.app.workspace.getMostRecentLeaf();
     if (!leaf || leaf.view.getViewType() !== "empty") {
+      return;
+    }
+    if (this.replacingLeaf === leaf) {
       return;
     }
     this.replacingLeaf = leaf;
