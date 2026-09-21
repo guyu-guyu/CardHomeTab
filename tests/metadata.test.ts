@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CARD_META,
+  hasLossyTokens,
   isAutoCss,
   isDefaultMeta,
   parseCardMeta,
@@ -103,5 +104,29 @@ describe("isAutoCss / isDefaultMeta", () => {
   it("detects fully default meta", () => {
     expect(isDefaultMeta(DEFAULT_CARD_META)).toBe(true);
     expect(isDefaultMeta(parseCardMeta("%%card: span=2%%")!)).toBe(false);
+  });
+});
+
+describe("hasLossyTokens", () => {
+  it("accepts a line the parser can represent exactly", () => {
+    expect(hasLossyTokens("%%card: css=base,text; span=2; icon=lucide-chart%%")).toBe(false);
+    expect(hasLossyTokens("%%card:")).toBe(false);
+  });
+
+  it("accepts a key reordering, which is normalization rather than loss", () => {
+    expect(hasLossyTokens("%%card: foo=bar; span=2%%")).toBe(false);
+  });
+
+  it("flags a value containing the separator", () => {
+    expect(hasLossyTokens("%%card: css=base; note=a;b%%")).toBe(true);
+  });
+
+  it("flags a bare token without a key", () => {
+    expect(hasLossyTokens("%%card: css=base; 说明文字%%")).toBe(true);
+    expect(hasLossyTokens("%%card: =oops%%")).toBe(true);
+  });
+
+  it("flags a repeated key", () => {
+    expect(hasLossyTokens("%%card: css=base; css=text%%")).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDashboard, sectionBody } from "../src/dashboard/parse";
+import { isSameSection, parseDashboard, sectionBody } from "../src/dashboard/parse";
 
 describe("parseDashboard", () => {
   it("returns an empty list when there is no heading at the target level", () => {
@@ -142,5 +142,31 @@ describe("parseDashboard", () => {
     const sections = parseDashboard(text, 2);
     expect(sections.map((s) => s.title)).toEqual(["甲", "乙"]);
     expect(sectionBody(text, sections[0]!)).toBe("正文\r\n");
+  });
+});
+
+describe("isSameSection", () => {
+  // 卡片首尾相接，删掉第 k 张后第 k+1 张的 start 正好等于第 k 张原来的 start。
+  // 只看偏移会把继任者当成"还在的那张"，从而把内容写错卡片。
+  const before = "## 甲\n甲内容\n## 乙\n乙内容\n";
+  const after = "## 乙\n乙内容\n";
+
+  it("rejects a different card that happens to reuse the same offset", () => {
+    const opened = parseDashboard(before, 2)[0]!;
+    const current = parseDashboard(after, 2)[0]!;
+    expect(opened.start).toBe(current.start);
+    expect(isSameSection(opened, current)).toBe(false);
+  });
+
+  it("accepts the same card across a re-parse", () => {
+    const opened = parseDashboard(before, 2)[0]!;
+    const current = parseDashboard(before, 2)[0]!;
+    expect(isSameSection(opened, current)).toBe(true);
+  });
+
+  it("rejects a card whose metadata was edited in between", () => {
+    const opened = parseDashboard("## 甲\n内容\n", 2)[0]!;
+    const current = parseDashboard("## 甲\n%%card: css=base%%\n内容\n", 2)[0]!;
+    expect(isSameSection(opened, current)).toBe(false);
   });
 });

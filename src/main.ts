@@ -7,26 +7,13 @@ import {
   removeCard as removeCardInText,
   updateCardMeta as updateCardMetaInText,
 } from "./dashboard/edit";
-import { DEFAULT_CARD_META, serializeCardMeta, type CardMeta } from "./dashboard/metadata";
-import type { CardSection } from "./dashboard/parse";
+import { DEFAULT_CARD_META, hasLossyTokens, type CardMeta } from "./dashboard/metadata";
+import { isSameSection, parseDashboard, type CardSection } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
 import { rememberRecentFile } from "./search-bar";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
 import { SnippetRegistry } from "./snippets";
-
-/** 弹窗打开时的 section 与此刻文件里的 section 是否还是同一张卡片。
- *
- *  只比 `start` 挡不住「卡片已被删除」：卡片在文档里首尾相接，删掉第 k 张之后，
- *  第 k+1 张的 start 正好等于第 k 张的旧 start，于是「已删除」会被误判成「还在」，
- *  把已删卡片的设置写进下一张卡片，并覆盖它自己手写的 `%%card: %%` 行。所以再核对
- *  标题与元数据是否仍是打开弹窗时的那一张。 */
-function isSameCard(opened: CardSection, current: CardSection): boolean {
-  return (
-    opened.title === current.title &&
-    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
-  );
-}
 
 export default class CardHomeTabPlugin extends Plugin {
   settings: CardHomeTabSettings = { ...DEFAULT_SETTINGS, recentFiles: [] };
@@ -199,7 +186,7 @@ export default class CardHomeTabPlugin extends Plugin {
   async removeCard(section: CardSection): Promise<void> {
     const sections = await this.store.sections();
     const current = sections.find((candidate) => candidate.start === section.start);
-    if (!current || !isSameCard(section, current)) {
+    if (!current || !isSameSection(section, current)) {
       new Notice("这张卡片已经不存在了，可能文件已被改动");
       return;
     }
@@ -256,20 +243,37 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   /** 弹窗是拿「打开那一刻的 section」算出来的 meta，用户可能在这中间改了文件——卡片甚至
-   *  可能已被删除或改标题。所以按 `start` 在当前文本里重新找一次，并用 `isSameCard` 确认还是
+   *  可能已被删除或改标题。所以按 `start` 在当前文本里重新找一次，并用 `isSameSection` 确认还是
    *  同一张卡：对不上就只提示、不写盘（写下去会改错卡片，甚至覆盖别人手写的 `%%card: %%`）。
    *  确认通过后用新的 section 偏移去改，而不是弹窗手里的旧值。
    *
    *  写盘走 `writeDashboard` 而不是裸 `store.process`：`process()` 在文件缺失时会抛，
    *  而 `onApply` 是 `void` 调用，裸抛只会留下未处理的 rejection（同 `moveCard` 的既有约定）。*/
   async applyCardMeta(section: CardSection, meta: CardMeta): Promise<void> {
-    const sections = await this.store.sections();
+    const text = await this.store.read();
+    if (text === null) {
+      new Notice("没有找到仪表盘文件");
+      return;
+    }
+    const sections = parseDashboard(text, this.settings.cardHeadingLevel);
     const current = sections.find((candidate) => candidate.start === section.start);
-    if (!current || !isSameCard(section, current)) {
+    if (!current || !isSameSection(section, current)) {
       new Notice("这张卡片已经不存在了，可能文件已被改动");
       return;
     }
-    const written = await this.writeDashboard((text) => updateCardMetaInText(text, current, meta));
+    // 写盘是整行替换，所以解析阶段丢掉的东西会变成真的丢字。先确认这一行能被
+    // 无损表示，否则宁愿不写——用户什么都没改就丢手写内容是最不该发生的事。
+    if (current.metaRange) {
+      const rawLine = text.slice(current.metaRange.start, current.metaRange.end);
+      if (hasLossyTokens(rawLine)) {
+        new Notice(
+          "这张卡片的 %%card: 行含有插件无法表示的内容（值里带分号、缺少 = 的片段、或重复的键），" +
+            "为避免覆盖你手写的内容已放弃保存。请先手工调整该行。",
+        );
+        return;
+      }
+    }
+    const written = await this.writeDashboard((t) => updateCardMetaInText(t, current, meta));
     if (!written) {
       return;
     }

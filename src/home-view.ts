@@ -121,6 +121,7 @@ export class HomeView extends ItemView {
         dashboardPath: this.plugin.store.path,
         cardId,
         index: section.index,
+        maxSpan: this.plugin.settings.gridColumns,
         gridEl: grid,
         callbacks: {
           onEdit: (target) => void this.plugin.editCard(target),

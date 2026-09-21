@@ -1,5 +1,5 @@
 import { isFenceClosing, matchFenceOpening, type Fence } from "../fences";
-import { parseCardMeta, type CardMeta } from "./metadata";
+import { parseCardMeta, serializeCardMeta, type CardMeta } from "./metadata";
 
 export interface CardSection {
   index: number;
@@ -147,4 +147,18 @@ export function parseDashboard(text: string, headingLevel: number): CardSection[
 
 export function sectionBody(text: string, section: CardSection): string {
   return text.slice(section.bodyStart, section.end);
+}
+
+/**
+ * 判断"弹窗/渲染时手里的 section"和"重新解析出来的 section"是不是同一张卡。
+ *
+ * 只按 `start` 找是不行的：卡片首尾相接，删掉第 k 张之后第 k+1 张的 `start`
+ * 恰好等于第 k 张原来的 `start`，于是按偏移查找会命中**下一张卡**，
+ * 把已删除卡片的设置写进继任者，并覆盖对方手写的 `%%card: %%` 行。
+ */
+export function isSameSection(opened: CardSection, current: CardSection): boolean {
+  return (
+    opened.title === current.title &&
+    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
+  );
 }

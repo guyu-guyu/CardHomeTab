@@ -255,3 +255,7 @@
   gap: var(--size-4-2);
   margin-top: var(--size-4-4);
 }
+
+.home-tab-span-input {
+  width: 5em;
+}
