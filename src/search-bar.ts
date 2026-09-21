@@ -32,23 +32,38 @@ export async function readBookmarkPaths(app: App): Promise<string[]> {
     if (typeof parsed !== "object" || parsed === null) {
       return [];
     }
-    const items = (parsed as { items?: unknown }).items;
-    if (!Array.isArray(items)) {
-      return [];
-    }
     const paths: string[] = [];
-    for (const item of items) {
-      if (typeof item !== "object" || item === null) {
-        continue;
-      }
-      const record = item as { type?: unknown; path?: unknown };
-      if (record.type === "file" && typeof record.path === "string") {
-        paths.push(record.path);
-      }
-    }
+    collectFilePaths((parsed as { items?: unknown }).items, paths);
     return paths;
   } catch {
     return [];
+  }
+}
+
+/**
+ * 递归收集 `type: "file"` 的书签路径。
+ *
+ * 必须递归：Obsidian 的书签面板支持**分组**，分组节点长这样
+ * `{ type: "group", items: [...] }`，文件书签就嵌在里面，而且可以多层嵌套。
+ * 只扫顶层 `items` 的话，把书签整理进分组的用户会看到"显示书签"开着、
+ * 却一条书签建议都没有，且没有任何提示。
+ */
+function collectFilePaths(items: unknown, into: string[]): void {
+  if (!Array.isArray(items)) {
+    return;
+  }
+  for (const item of items) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as { type?: unknown; path?: unknown; items?: unknown };
+    if (record.type === "file" && typeof record.path === "string") {
+      into.push(record.path);
+      continue;
+    }
+    if (record.type === "group") {
+      collectFilePaths(record.items, into);
+    }
   }
 }
 

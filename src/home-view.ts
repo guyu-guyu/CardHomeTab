@@ -94,7 +94,7 @@ export class HomeView extends ItemView {
       );
       const emptyState = candidates
         .filter((candidate) => candidate.kind !== "file")
-        .slice(0, Math.max(this.plugin.settings.maxResults, this.plugin.settings.maxRecentFiles));
+        .slice(0, this.plugin.settings.maxResults);
       this.disposeSearch = renderSearchBar(
         stage,
         this.app,
