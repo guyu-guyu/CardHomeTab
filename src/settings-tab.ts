@@ -1,5 +1,6 @@
 import {
   AbstractInputSuggest,
+  Notice,
   PluginSettingTab,
   prepareFuzzySearch,
   Setting,
@@ -7,6 +8,7 @@ import {
   type SettingDefinitionItem,
   type TFile,
 } from "obsidian";
+import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
 
 /**
@@ -94,7 +96,12 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
     containerEl.empty();
     const settings = this.plugin.settings;
     const save = (): void => {
-      void this.plugin.saveSettings().then(() => this.plugin.refreshHome());
+      void this.plugin
+        .saveSettings()
+        .then(() => this.plugin.refreshHome())
+        .catch((error: unknown) => {
+          new Notice(`保存设置失败：${errorMessage(error)}`);
+        });
     };
 
     new Setting(containerEl).setName("页面").setHeading();
@@ -323,6 +330,19 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         save();
       }),
     );
+
+    new Setting(containerEl)
+      .setName("结果数")
+      .setDesc("搜索建议最多显示多少条。")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 50, 1)
+          .setValue(settings.maxResults)
+          .onChange((value) => {
+            settings.maxResults = value;
+            save();
+          }),
+      );
 
     new Setting(containerEl).setName("最近文件条数").addSlider((slider) =>
       slider
