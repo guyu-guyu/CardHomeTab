@@ -83,11 +83,6 @@ export function enableCardDrag(args: DragArgs): () => void {
     }
     // 只为放行落点而存在：不 preventDefault，浏览器就不允许 drop。
     event.preventDefault();
-    // 本版本没有落点指示器，所以这个下标眼下只有测试在读（tests/card-grid-drag.test.ts）；
-    // 它同时也是后续做落点预览的钩子，因此不能按「无人读取」删掉。
-    gridEl.dataset["dropIndex"] = String(
-      computeDropIndex(cardRects(gridEl), event.clientX, event.clientY),
-    );
   };
 
   const handleDrop = (event: DragEvent): void => {
@@ -108,7 +103,6 @@ export function enableCardDrag(args: DragArgs): () => void {
   const handleDragEnd = (): void => {
     dragging = false;
     cardEl.removeClass("is-dragging");
-    delete gridEl.dataset["dropIndex"];
     delete gridEl.dataset["draggingIndex"];
     disableDraggable();
   };
@@ -127,12 +121,12 @@ export function enableCardDrag(args: DragArgs): () => void {
   cardEl.addEventListener("dragover", handleDragOver);
   cardEl.addEventListener("drop", handleDrop);
   cardEl.addEventListener("dragend", handleDragEnd);
-  // 挂在 document 上而不是把手上：手指可能松在把手外面。
-  // 之所以要判 typeof：测试跑在 node 里（仓库不装 jsdom），没有 document；浏览器里恒有。
-  if (typeof document !== "undefined") {
-    document.addEventListener("pointerup", resetIfNotDragging);
-    document.addEventListener("pointercancel", resetIfNotDragging);
-  }
+  // 挂在把手自己的 document 上而不是把手上：手指可能松在把手外面。
+  // 用 handleEl.ownerDocument 而不是全局 document：弹出窗口里的元素属于另一个 window，
+  // 全局 document 根本收不到那边的事件；元素自身的 ownerDocument 则恒存在。
+  const ownerDocument = handleEl.ownerDocument;
+  ownerDocument.addEventListener("pointerup", resetIfNotDragging);
+  ownerDocument.addEventListener("pointercancel", resetIfNotDragging);
 
   return () => {
     handleEl.removeEventListener("pointerdown", enableDraggable);
@@ -140,9 +134,7 @@ export function enableCardDrag(args: DragArgs): () => void {
     cardEl.removeEventListener("dragover", handleDragOver);
     cardEl.removeEventListener("drop", handleDrop);
     cardEl.removeEventListener("dragend", handleDragEnd);
-    if (typeof document !== "undefined") {
-      document.removeEventListener("pointerup", resetIfNotDragging);
-      document.removeEventListener("pointercancel", resetIfNotDragging);
-    }
+    ownerDocument.removeEventListener("pointerup", resetIfNotDragging);
+    ownerDocument.removeEventListener("pointercancel", resetIfNotDragging);
   };
 }

@@ -13,6 +13,28 @@ import { enableCardDrag } from "../src/card-grid";
 
 type Listener = (event: unknown) => void;
 
+/** 把手的 ownerDocument 替身：enableCardDrag 把 pointerup / pointercancel 挂在它上面，
+ *  所以这里要能同时当 spy 用（断言挂了/摘了哪些）和当事件源用（手动派发 pointerup）。 */
+class FakeOwnerDocument {
+  listeners = new Map<string, Set<Listener>>();
+
+  addEventListener = vi.fn((type: string, listener: Listener): void => {
+    const set = this.listeners.get(type) ?? new Set<Listener>();
+    set.add(listener);
+    this.listeners.set(type, set);
+  });
+
+  removeEventListener = vi.fn((type: string, listener: Listener): void => {
+    this.listeners.get(type)?.delete(listener);
+  });
+
+  fire(type: string, event: unknown): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event);
+    }
+  }
+}
+
 class FakeEl {
   attributes = new Map<string, string>();
   classSet = new Set<string>();
@@ -20,6 +42,8 @@ class FakeEl {
   children: FakeEl[] = [];
   listeners = new Map<string, Set<Listener>>();
   rect = { left: 0, top: 0, right: 0, bottom: 0 };
+  // 真元素恒有 ownerDocument（弹出窗口里是另一个 document），这里给每个替身配一个。
+  ownerDocument = new FakeOwnerDocument();
 
   addEventListener(type: string, listener: Listener): void {
     const set = this.listeners.get(type) ?? new Set<Listener>();
@@ -198,6 +222,10 @@ describe("enableCardDrag", () => {
     expect(h.cards[0]!.attributes.get("draggable")).toBe("true");
 
     h.cards[0]!.fire("dragstart", dragEvent(0, 0));
+    // 拖拽进行中松手不算收尾：draggable 要留着，收尾归 dragend 管
+    h.handles[0]!.ownerDocument.fire("pointerup", {});
+    expect(h.cards[0]!.attributes.get("draggable")).toBe("true");
+
     h.cards[0]!.fire("dragend", dragEvent(0, 0));
     expect(h.cards[0]!.attributes.has("draggable")).toBe(false);
 
@@ -242,24 +270,30 @@ describe("enableCardDrag", () => {
     h.cards[0]!.fire("dragstart", dragEvent(0, 0));
     h.cards[0]!.fire("dragover", dragEvent(290, 50));
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(true);
-    expect(h.grid.dataset["dropIndex"]).toBe("3");
     expect(h.grid.dataset["draggingIndex"]).toBe("0");
 
     h.cards[0]!.fire("dragend", dragEvent(0, 0));
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
-    expect(h.grid.dataset["dropIndex"]).toBeUndefined();
     expect(h.grid.dataset["draggingIndex"]).toBeUndefined();
     h.dispose();
   });
 
   it("unregisters every listener on dispose", () => {
     const h = harness();
+    const doc = h.handles[0]!.ownerDocument;
     expect(h.handles[0]!.listenerCount()).toBe(1);
     expect(h.cards[0]!.listenerCount()).toBe(4);
+    // pointerup / pointercancel 挂在把手自己的 document 上（不在把手、也不在卡片上）
+    expect(doc.addEventListener.mock.calls.map(([type]) => type)).toEqual([
+      "pointerup",
+      "pointercancel",
+    ]);
 
     h.dispose();
     expect(h.handles[0]!.listenerCount()).toBe(0);
     expect(h.cards[0]!.listenerCount()).toBe(0);
+    // 摘掉的必须与挂上的是同一批：类型与函数引用都对得上
+    expect(doc.removeEventListener.mock.calls).toEqual(doc.addEventListener.mock.calls);
 
     // 拆掉之后事件不能再产生任何效果
     dragOnto(h, 0, 2, 290, 50);
@@ -298,7 +332,6 @@ describe("enableCardDrag", () => {
     expect(cards[0]!.hasClass("is-dragging")).toBe(false);
 
     cards[1]!.fire("dragover", dragEvent(190, 50));
-    expect(grid.dataset["dropIndex"]).toBeUndefined();
 
     cards[1]!.fire("drop", dragEvent(190, 50, "0"));
     expect(dropped).toEqual([]);
@@ -306,7 +339,6 @@ describe("enableCardDrag", () => {
     // 解禁后同一次手势应当照常生效
     enabled = true;
     cards[1]!.fire("dragover", dragEvent(190, 50));
-    expect(grid.dataset["dropIndex"]).toBe("2");
 
     const start2 = dragEvent(0, 0);
     cards[0]!.fire("dragstart", start2);
