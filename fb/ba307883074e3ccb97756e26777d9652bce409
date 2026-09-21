@@ -1,0 +1,18 @@
+src/card-settings.ts
+  h_d9088715075e51 1-169
+src/main.ts
+  h_d9088715075e51 2,8,10,18-30,181-184,242-270
+styles.css
+  h_d9088715075e51 200-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbba307883074e3ccb97756e26777d9652bce409",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
