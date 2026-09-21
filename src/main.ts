@@ -82,6 +82,12 @@ export default class CardHomeTabPlugin extends Plugin {
       }),
     );
 
+    this.registerEvent(
+      this.app.workspace.on("css-change", () => {
+        this.refreshHome();
+      }),
+    );
+
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded || !this.settings.openOnStartup) {
         return;
