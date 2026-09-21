@@ -1,0 +1,18 @@
+src/dashboard/io.ts
+  h_d9088715075e51 22-29,42-44
+src/settings-tab.ts
+  h_d9088715075e51 359-363,365-368,371-374
+styles.css
+  h_d9088715075e51 252-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b4e00eb7152eb5760ecad039dfa9de29efe3cfe7",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
