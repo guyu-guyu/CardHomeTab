@@ -1,0 +1,18 @@
+src/background.ts
+  h_d9088715075e51 28-30
+src/card.ts
+  h_d9088715075e51 16-29,31-37,68,125-135,138,140,142,147-148,151-153,155
+src/main.ts
+  h_d9088715075e51 98-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1a76a5f6907a6cf80909ae6363196fc793268693",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
