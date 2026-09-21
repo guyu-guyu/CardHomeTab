@@ -4259,7 +4259,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { DEFAULT_SETTINGS } from "../src/settings";
-import { rememberRecentFile } from "../src/search-bar";
+import { buildCandidates, readBookmarkPaths, rememberRecentFile } from "../src/search-bar";
 
 describe("rememberRecentFile", () => {
   it("puts the newest entry first", () => {
@@ -4302,6 +4302,75 @@ describe("rememberRecentFile", () => {
     const settings = { ...DEFAULT_SETTINGS, recentFiles: [{ path: "a.md", timestamp: 1 }] };
     rememberRecentFile(settings, "b.md");
     expect(settings.recentFiles).toHaveLength(1);
+  });
+});
+
+describe("readBookmarkPaths", () => {
+  const appWith = (json: string) =>
+    ({
+      vault: {
+        configDir: ".vault-config",
+        adapter: { read: () => Promise.resolve(json) },
+      },
+    }) as unknown as App;
+
+  it("reads file bookmarks and descends into nested groups", async () => {
+    const json = JSON.stringify({
+      items: [
+        { type: "file", path: "a.md" },
+        { type: "group", items: [{ type: "file", path: "b.md" }] },
+        { type: "search", query: "x" },
+        { type: "group", items: [{ type: "group", items: [{ type: "file", path: "c.md" }] }] },
+      ],
+    });
+    await expect(readBookmarkPaths(appWith(json))).resolves.toEqual(["a.md", "b.md", "c.md"]);
+  });
+
+  it("returns an empty list rather than throwing on a malformed file", async () => {
+    await expect(readBookmarkPaths(appWith("not json"))).resolves.toEqual([]);
+    await expect(readBookmarkPaths(appWith("[]"))).resolves.toEqual([]);
+    await expect(readBookmarkPaths(appWith("{}"))).resolves.toEqual([]);
+    await expect(readBookmarkPaths(appWith('{"items": "nope"}'))).resolves.toEqual([]);
+  });
+});
+
+describe("buildCandidates", () => {
+  const fileOf = (path: string) => ({
+    path,
+    basename: path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, ""),
+  });
+  const appWith = (paths: string[]) =>
+    ({
+      vault: {
+        getMarkdownFiles: () => paths.map(fileOf),
+        getFiles: () => paths.map(fileOf),
+      },
+    }) as unknown as App;
+
+  it("orders bookmarks, then recents, then everything else", () => {
+    const candidates = buildCandidates(appWith(["a.md", "b.md", "c.md"]), DEFAULT_SETTINGS, ["b.md"], ["c.md"]);
+    expect(candidates.map((candidate) => `${candidate.kind}:${candidate.path}`)).toEqual([
+      "bookmark:b.md",
+      "recent:c.md",
+      "file:a.md",
+    ]);
+  });
+
+  it("never lists the same path twice, and lets the bookmark tag win", () => {
+    const candidates = buildCandidates(appWith(["a.md"]), DEFAULT_SETTINGS, ["a.md"], ["a.md"]);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.kind).toBe("bookmark");
+  });
+
+  it("drops bookmarks and recents whose path is not in the vault", () => {
+    const candidates = buildCandidates(appWith(["a.md"]), DEFAULT_SETTINGS, ["gone.md"], ["also-gone.md"]);
+    expect(candidates.map((candidate) => candidate.path)).toEqual(["a.md"]);
+  });
+
+  it("omits the bookmark and recent sources when the settings disable them", () => {
+    const settings = { ...DEFAULT_SETTINGS, showBookmarks: false, showRecentFiles: false };
+    const candidates = buildCandidates(appWith(["a.md", "b.md"]), settings, ["a.md"], ["b.md"]);
+    expect(candidates.map((candidate) => candidate.kind)).toEqual(["file", "file"]);
   });
 });
 ```
@@ -4355,23 +4424,38 @@ export async function readBookmarkPaths(app: App): Promise<string[]> {
     if (typeof parsed !== "object" || parsed === null) {
       return [];
     }
-    const items = (parsed as { items?: unknown }).items;
-    if (!Array.isArray(items)) {
-      return [];
-    }
     const paths: string[] = [];
-    for (const item of items) {
-      if (typeof item !== "object" || item === null) {
-        continue;
-      }
-      const record = item as { type?: unknown; path?: unknown };
-      if (record.type === "file" && typeof record.path === "string") {
-        paths.push(record.path);
-      }
-    }
+    collectFilePaths((parsed as { items?: unknown }).items, paths);
     return paths;
   } catch {
     return [];
+  }
+}
+
+/**
+ * 递归收集 `type: "file"` 的书签路径。
+ *
+ * 必须递归：Obsidian 的书签面板支持**分组**，分组节点长这样
+ * `{ type: "group", items: [...] }`，文件书签就嵌在里面，而且可以多层嵌套。
+ * 只扫顶层 `items` 的话，把书签整理进分组的用户会看到"显示书签"开着、
+ * 却一条书签建议都没有，且没有任何提示。
+ */
+function collectFilePaths(items: unknown, into: string[]): void {
+  if (!Array.isArray(items)) {
+    return;
+  }
+  for (const item of items) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as { type?: unknown; path?: unknown; items?: unknown };
+    if (record.type === "file" && typeof record.path === "string") {
+      into.push(record.path);
+      continue;
+    }
+    if (record.type === "group") {
+      collectFilePaths(record.items, into);
+    }
   }
 }
 
@@ -4517,7 +4601,11 @@ export function renderSearchBar(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run tests/search-candidates.test.ts`
-Expected: PASS，4 个用例。
+Expected: PASS，10 个用例。
+
+除了 `rememberRecentFile` 的 4 条，这里还补了 `readBookmarkPaths` 与 `buildCandidates` 的 6 条。理由很实际：这两个函数虽然 import 了 `obsidian`，但它们的依赖全部来自传进来的 `app`——`readBookmarkPaths` 只用 `vault.configDir` 与 `adapter.read`，`buildCandidates` 只用 `vault.getMarkdownFiles()/getFiles()`——所以一个几行的假 `app` 就能把排序、去重、来源开关、丢失路径与分组书签全部钉住，不需要 Obsidian 运行时。**一定要写进 `tests/`**：实现过程中用过的离线探针放在自忽略的 `.superpowers/` 下，clone 仓库的人复现不了，等于没有覆盖。
+
+分组那条尤其重要：`items` 里的 `{ type: "group", items: [...] }` 可以多层嵌套，只扫顶层会让"把书签整理进分组"的用户在看到开关打开的同时拿到零条建议。
 
 - [ ] **Step 5: 接进首页视图与设置记忆**
 
@@ -4533,7 +4621,7 @@ Expected: PASS，4 个用例。
       const candidates = buildCandidates(this.app, this.plugin.settings, bookmarkPaths, recentPaths);
       const emptyState = candidates
         .filter((candidate) => candidate.kind !== "file")
-        .slice(0, Math.max(this.plugin.settings.maxResults, this.plugin.settings.maxRecentFiles));
+        .slice(0, this.plugin.settings.maxResults);
       this.disposeSearch = renderSearchBar(
         stage,
         this.app,
