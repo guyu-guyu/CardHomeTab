@@ -21,6 +21,7 @@
 - TypeScript 编译选项：`strict`、`noUncheckedIndexedAccess`、`noImplicitAny`、`target` ES2022、`module` ESNext、`moduleResolution` Bundler、`noEmit`。
 - 测试文件放 `tests/`，一律 `import { describe, expect, it } from "vitest"` 显式导入（不开 `globals`）。
 - 提交信息用约定式前缀 + 中文描述（`feat:` / `fix:` / `chore:` / `docs:` / `test:`）。
+- **面向用户的 UI 文案一律用中文**，与既有 `annote_sidebar` 保持一致（它的 `getDisplayText()` 返回 `"批注"`，命令与设置项也都是中文）。这不只是风格：`eslint-plugin-obsidianmd` 的 `obsidianmd/ui/sentence-case` 会把 `"CardHomeTab"` 这类英文专有名词判为违反句首大写规则，而该规则**不允许用 `eslint-disable` 关掉**（`eslint-comments/no-restricted-disable`），配置里也没有合适的豁免方式。中文文案天然不受这条规则约束。视图的 `getDisplayText()` 返回 `"卡片首页"`。
 - 分支名 `master`。
 - `npm run check` 由 `test` → `lint` → `build` 三段组成，CI 与本地同一条命令。
 
@@ -2889,7 +2890,7 @@ export class HomeView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "CardHomeTab";
+    return "卡片首页";
   }
 
   getIcon(): string {
@@ -3062,6 +3063,13 @@ export default class CardHomeTabPlugin extends Plugin {
 ```
 
 `maybeReplaceEmptyLeaf` 依赖 Obsidian 空标签页的视图类型字符串 `"empty"`。这不是公开 API 文档里明确写的常量，Step 4 的手工验收里有一项专门确认它：打开一个新标签页，在控制台执行 `app.workspace.getMostRecentLeaf().view.getViewType()`，**把真实返回值写进代码**，不要凭猜测保留 `"empty"`。如果真实值不同，同步改掉两处比较。
+
+**实施记录（计划外但已落地，后续任务不要重复添加）**：实际实现比上面的代码块多出这些内容，原因是它们在本任务就有存在理由——
+
+- `getDisplayText()` 返回 `"卡片首页"`（中文，见 Global Constraints 里的 UI 文案约定）。
+- `snippets!: SnippetRegistry` 字段。片段仓库本身是 Task 7 的产物，但视图骨架之后要靠它渲染卡片样式，提前挂上比 Task 10 再回头改 `onload` 更省事。
+- `editCard` / `addCard` / `removeCard` / `openCardSettings` 四个方法，以及 `new-card` 命令。计划原本把它们放在 Task 10，但本任务已经有了"仪表盘文件缺失"提示与 `process()` 失败路径，这两处都需要写文件的入口，提前落地能让失败的调用链完整可测。`openCardSettings` 此时只是弹一个占位 Notice，Task 14 替换。
+- `removeCard` / `addCard` 里对 `store.process()` 的 `await` 都包在 `try/catch` 中并弹 `Notice`：`process()` 是唯一会抛的方法，而 Obsidian 里未处理的 rejection 只会留在控制台（见进度记录第 36 条）。
 
 - [ ] **Step 3: 补样式**
 
@@ -3317,87 +3325,13 @@ import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { scopedStylesheet } from "./snippet-scope";
 ```
 
-- [ ] **Step 3: 在 main.ts 里补上依赖与回调**
+- [ ] **Step 3: 在 main.ts 里接上卡片渲染所需的依赖**
 
-`src/main.ts` 增加 import：
+**Task 9 已经加好了这些，本任务不要重复添加**：`snippets!: SnippetRegistry` 字段、`editCard` / `addCard` / `removeCard` / `openCardSettings` 四个方法、`new-card` 命令，以及 `removeCard` / `addCard` 里对 `store.process()` 的 `try/catch` + `Notice`。Task 9 的计划文本末尾有「实施记录」一节列了完整清单，先读它再动手，否则会重复定义同名成员。
 
-```ts
-import { MarkdownView, Notice, Plugin } from "obsidian";
-import { removeCard as removeCardInText } from "./dashboard/edit";
-import type { CardSection } from "./dashboard/parse";
-import { SnippetRegistry } from "./snippets";
-```
+本任务在 `home-view.ts` 里把它们当作已存在的接口使用：`this.plugin.snippets`、`this.plugin.editCard(...)`、`this.plugin.removeCard(...)`、`this.plugin.openCardSettings(...)`。若发现某个成员缺失，说明 Task 9 的实现与它的实施记录不一致——停下来告诉我，不要就地补一个。
 
-`onload` 里在 `this.store = ...` 之后加一行：
-
-```ts
-    this.snippets = new SnippetRegistry(this.app);
-```
-
-再在 `onload` 的 `addCommand` 序列末尾加「新建卡片」命令：
-
-```ts
-    this.addCommand({
-      id: "new-card",
-      name: "新建卡片",
-      callback: () => {
-        void this.addCard();
-      },
-    });
-```
-
-类字段与四个方法：
-
-```ts
-  snippets!: SnippetRegistry;
-
-  async editCard(section: CardSection): Promise<void> {
-    await this.openDashboardNote();
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) {
-      return;
-    }
-    const line = view.editor.offsetToPos(section.start).line;
-    view.editor.setCursor({ line, ch: 0 });
-    view.editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
-  }
-
-  async addCard(): Promise<void> {
-    if (!this.store.exists()) {
-      await this.store.create();
-    }
-    const title = `新卡片 ${new Date().toLocaleDateString()}`;
-    await this.markSelfWriting(async () => {
-      await this.store.process((text) =>
-        appendCardInText(text, this.settings.cardHeadingLevel, title, DEFAULT_CARD_META, ""),
-      );
-    });
-    this.refreshHome();
-  }
-
-  async removeCard(section: CardSection): Promise<void> {
-    await this.markSelfWriting(async () => {
-      await this.store.process((text) => removeCardInText(text, section));
-    });
-    this.refreshHome();
-  }
-
-  openCardSettings(_section: CardSection): void {
-    new Notice("卡片设置将在 Task 14 接入");
-  }
-```
-
-`addCard` 用到 `appendCardInText` 与 `DEFAULT_CARD_META`，把 import 补全：
-
-```ts
-import {
-  appendCard as appendCardInText,
-  removeCard as removeCardInText,
-} from "./dashboard/edit";
-import { DEFAULT_CARD_META } from "./dashboard/metadata";
-```
-
-`DEFAULT_CARD_META` 的 `entries` 数组在 `appendCard` 里只被读取（`serializeCardMeta` 遍历），不会被写，因此直接传共享常量是安全的。
+`openCardSettings` 在 Task 9 里是弹占位 Notice 的，本任务不动它，Task 14 才替换成真正的弹窗。
 
 - [ ] **Step 4: 补样式**
 
@@ -3782,7 +3716,7 @@ import { enableCardDrag } from "./card-grid";
 
 - [ ] **Step 6: 在 main.ts 里补 moveCard**
 
-`src/main.ts` 把 Task 10 留下的 `dashboard/edit` 导入补成三个：
+`src/main.ts` 已经有 `appendCard as appendCardInText` 与 `removeCard as removeCardInText` 两个导入（Task 9 加的），这里只补 `moveCard`：
 
 ```ts
 import {
