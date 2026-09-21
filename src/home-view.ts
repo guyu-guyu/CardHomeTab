@@ -90,6 +90,9 @@ export class HomeView extends ItemView {
       grid.appendChild(card.el);
 
       const parts = await this.plugin.snippets.resolveAll(resolveSnippetRefs(section.meta, body));
+      if (token !== this.renderToken) {
+        return;
+      }
       await card.render(body, scopedStylesheet(parts, cardId));
     }
   }

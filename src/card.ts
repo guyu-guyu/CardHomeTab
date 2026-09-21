@@ -12,8 +12,17 @@ import type { CardSection } from "./dashboard/parse";
  * 环境都支持它。这个探测仍然保留，作为老环境的降级开关：不支持时只跳过样式注入，
  * 卡片照常渲染，不抛异常。
  */
+let styleSheetSupport: boolean | null = null;
+
 function supportsConstructableStyleSheets(): boolean {
-  return typeof CSSStyleSheet === "function" && "adoptedStyleSheets" in Document.prototype;
+  if (styleSheetSupport !== null) {
+    return styleSheetSupport;
+  }
+  styleSheetSupport =
+    typeof CSSStyleSheet === "function" &&
+    "adoptedStyleSheets" in Document.prototype &&
+    "replaceSync" in CSSStyleSheet.prototype;
+  return styleSheetSupport;
 }
 
 export interface CardCallbacks {
@@ -37,6 +46,7 @@ export class CardView {
   private readonly args: CardViewArgs;
   private readonly contentEl: HTMLElement;
   private sheet: CSSStyleSheet | null = null;
+  private destroyed = false;
   private component: Component | null = null;
   private renderToken = 0;
 
@@ -77,6 +87,9 @@ export class CardView {
   }
 
   applyStyles(css: string): void {
+    if (this.destroyed) {
+      return;
+    }
     this.detachStyles();
     const trimmed = css.trim();
     if (trimmed.length === 0 || !supportsConstructableStyleSheets()) {
@@ -98,6 +111,9 @@ export class CardView {
   }
 
   async render(body: string, css: string): Promise<void> {
+    if (this.destroyed) {
+      return;
+    }
     const token = ++this.renderToken;
     this.component?.unload();
     this.component = null;
@@ -117,13 +133,20 @@ export class CardView {
       component,
     );
 
-    if (token !== this.renderToken) {
+    if (token !== this.renderToken || this.destroyed) {
+      if (this.component === component) {
+        this.component = null;
+      }
       component.unload();
       holder.remove();
+      if (this.destroyed) {
+        this.detachStyles();
+      }
     }
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.renderToken++;
     this.component?.unload();
     this.component = null;
