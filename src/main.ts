@@ -13,6 +13,7 @@ import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
 import { rememberRecentFile } from "./search-bar";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
+import { CardHomeTabSettingTab } from "./settings-tab";
 import { SnippetRegistry } from "./snippets";
 
 export default class CardHomeTabPlugin extends Plugin {
@@ -31,6 +32,8 @@ export default class CardHomeTabPlugin extends Plugin {
     this.snippets = new SnippetRegistry(this.app);
 
     this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
+
+    this.addSettingTab(new CardHomeTabSettingTab(this.app, this));
 
     this.register(() => {
       if (this.selfWriteTimer !== null) {
