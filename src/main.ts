@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin } from "obsidian";
+import { MarkdownView, Notice, Plugin, type WorkspaceLeaf } from "obsidian";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
@@ -17,8 +17,9 @@ export default class CardHomeTabPlugin extends Plugin {
   snippets!: SnippetRegistry;
 
   private selfWriting = false;
+  private selfWriteTimer: number | null = null;
   private unloaded = false;
-  private replacingLeaf = false;
+  private replacingLeaf: WorkspaceLeaf | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -26,6 +27,12 @@ export default class CardHomeTabPlugin extends Plugin {
     this.snippets = new SnippetRegistry(this.app);
 
     this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this));
+
+    this.register(() => {
+      if (this.selfWriteTimer !== null) {
+        window.clearTimeout(this.selfWriteTimer);
+      }
+    });
 
     this.addCommand({
       id: "open-home",
@@ -87,9 +94,15 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   async openHome(): Promise<void> {
+    if (this.unloaded) {
+      return;
+    }
     const existing = this.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)[0];
     if (existing) {
       await this.app.workspace.revealLeaf(existing);
+      return;
+    }
+    if (this.unloaded) {
       return;
     }
     const leaf = this.app.workspace.getLeaf("tab");
@@ -116,15 +129,20 @@ export default class CardHomeTabPlugin extends Plugin {
     try {
       return await action();
     } finally {
-      const timer = window.setTimeout(() => {
+      if (this.selfWriteTimer !== null) {
+        window.clearTimeout(this.selfWriteTimer);
+      }
+      this.selfWriteTimer = window.setTimeout(() => {
         this.selfWriting = false;
+        this.selfWriteTimer = null;
       }, 350);
-      this.register(() => window.clearTimeout(timer));
     }
   }
 
-  /** Task 10 的「新建卡片」命令与卡片菜单会调用这两个方法；先接上是因为 `process()`
-   *  是唯一会抛的成员，它的失败必须以 Notice 呈现，而不是留下未处理的 rejection。 */
+  /** 「新建卡片」命令在 `onload` 里注册，会调用 `addCard`；Task 10 只需把卡片菜单接到
+   *  `removeCard` / `editCard` / `openCardSettings`。三个写操作都必须经 `writeDashboard()`，
+   *  因为 `process()` 是唯一会抛的成员，它的失败必须以 Notice 呈现，而不是留下未处理的
+   *  rejection。 */
   async addCard(): Promise<void> {
     if (!(await this.ensureDashboardFile())) {
       return;
@@ -153,9 +171,16 @@ export default class CardHomeTabPlugin extends Plugin {
     if (!view) {
       return;
     }
-    const line = view.editor.offsetToPos(section.start).line;
-    view.editor.setCursor({ line, ch: 0 });
-    view.editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
+    if (!view.editor) {
+      await view.setState({ ...view.getState(), mode: "source" }, { history: false });
+    }
+    const editor = view.editor;
+    if (!editor) {
+      return;
+    }
+    const line = editor.offsetToPos(section.start).line;
+    editor.setCursor({ line, ch: 0 });
+    editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
   }
 
   openCardSettings(section: CardSection): void {
@@ -197,11 +222,13 @@ export default class CardHomeTabPlugin extends Plugin {
     if (!leaf || leaf.view.getViewType() !== "empty") {
       return;
     }
-    this.replacingLeaf = true;
+    this.replacingLeaf = leaf;
     void leaf
       .setViewState({ type: HOME_VIEW_TYPE, active: true })
       .finally(() => {
-        this.replacingLeaf = false;
+        if (this.replacingLeaf === leaf) {
+          this.replacingLeaf = null;
+        }
       });
   }
 
