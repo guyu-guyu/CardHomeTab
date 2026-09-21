@@ -1,9 +1,11 @@
 /* 卡片内普通 Markdown 排版收敛 */
-.home-card-content.markdown-rendered > :first-child {
+/* 首末元素去外边距要打到 inner 的子元素上：card.ts 让 .home-card-content-inner 成为
+   .home-card-content 唯一的直接子元素，直接打 `> :first-child` 只会命中那个 wrapper。 */
+.home-card-content.markdown-rendered > .home-card-content-inner > :first-child {
   margin-top: 0;
 }
 
-.home-card-content.markdown-rendered > :last-child {
+.home-card-content.markdown-rendered > .home-card-content-inner > :last-child {
   margin-bottom: 0;
 }
 

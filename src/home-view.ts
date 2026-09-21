@@ -125,7 +125,7 @@ export class HomeView extends ItemView {
         gridEl: grid,
         callbacks: {
           onEdit: (target) => void this.plugin.editCard(target),
-          onRemove: (target) => void this.plugin.removeCard(target),
+          onRemove: (target) => this.plugin.removeCard(target),
           onSettings: (target) => this.plugin.openCardSettings(target),
         },
         onDrop: (from, to) => {

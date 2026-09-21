@@ -70,7 +70,10 @@ export class SnippetRegistry {
     const builtin: SnippetInfo[] = Object.keys(BUILTIN_SNIPPETS)
       .sort()
       .map((name) => ({ ref: `builtin:${name}`, name, source: "builtin" as const, path: null }));
+    // 与 read() 用同一道守卫：read() 会拒绝含分隔符或 `..` 的名字，若 list() 照单全收，
+    // `my..card` 这类文件就会出现在设置页与卡片弹窗里，选中后静默失效。
     const user: SnippetInfo[] = (this.userNames ?? [])
+      .filter(isSafeSnippetName)
       .slice()
       .sort()
       .map((name) => ({

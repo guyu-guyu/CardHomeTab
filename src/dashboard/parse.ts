@@ -22,6 +22,10 @@ interface Line {
 // headingMatch 返回 null，整篇 CRLF 文档会一张卡片都解析不出来（且完全静默）。
 // 不要“简化”掉这里的 replace —— 它只清洗匹配文本，start/end 仍指向原文，
 // 保证 sectionBody 等按偏移切片的地方依旧返回带 \r\n 的原字节。
+//
+// 第 0 行还要另外剥掉行首的 BOM：frontmatterEnd 用 `.trim()` 顺带容忍了它，而
+// headingMatch 的正则不会，于是「带 BOM 且首行就是标题」的文件会静默少一张卡片。
+// 与 \r 同理，这里只清洗匹配文本，偏移不动，所以不必担心切片错位。
 function toLines(text: string): Line[] {
   const lines: Line[] = [];
   let start = 0;
@@ -33,6 +37,10 @@ function toLines(text: string): Line[] {
   }
   if (start < text.length) {
     lines.push({ text: text.slice(start).replace(/\r$/, ""), start, end: text.length });
+  }
+  const first = lines[0];
+  if (first) {
+    first.text = first.text.replace(/^\uFEFF/, "");
   }
   return lines;
 }

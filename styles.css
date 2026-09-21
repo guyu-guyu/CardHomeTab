@@ -31,6 +31,12 @@
   .home-tab-cards {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+
+  /* 每张卡片内联写着 grid-column: span N，单列下它会撑出一个隐式列，"单列"就不是一列了。
+     这里把 span 压回 auto，让窄屏真的只有一列。 */
+  .home-card {
+    grid-column: auto !important;
+  }
 }
 
 .home-card {

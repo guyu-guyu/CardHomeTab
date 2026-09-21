@@ -143,6 +143,23 @@ describe("parseDashboard", () => {
     expect(sections.map((s) => s.title)).toEqual(["甲", "乙"]);
     expect(sectionBody(text, sections[0]!)).toBe("正文\r\n");
   });
+
+  it("parses a heading on the first line even when the file starts with a BOM", () => {
+    // frontmatterEnd 用 .trim() 顺带容忍了 BOM，headingMatch 的正则不会：不剥掉它，
+    // 「带 BOM + 首行就是标题」的文件会静默少掉第一张卡片。
+    const text = "\uFEFF## 甲\n正文甲\n## 乙\n正文乙\n";
+    const sections = parseDashboard(text, 2);
+    expect(sections.map((s) => s.title)).toEqual(["甲", "乙"]);
+    // 偏移必须仍指向原文：剥 BOM 只作用于匹配文本，section 切片照旧拿到原字节（含那个 BOM）。
+    expect(text.slice(sections[0]!.start, sections[0]!.end)).toBe("\uFEFF## 甲\n正文甲\n");
+    expect(sectionBody(text, sections[0]!)).toBe("正文甲\n");
+  });
+
+  it("still reads frontmatter that is preceded by a BOM", () => {
+    const text = "\uFEFF---\ntitle: 首页\n---\n## 甲\n正文\n";
+    const sections = parseDashboard(text, 2);
+    expect(sections.map((s) => s.title)).toEqual(["甲"]);
+  });
 });
 
 describe("isSameSection", () => {

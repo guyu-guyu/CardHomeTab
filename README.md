@@ -16,7 +16,7 @@ Turn one Markdown note into a start page. CardHomeTab splits that note by headin
 - Per-card metadata in a native `%%card: %%` comment: CSS snippets, column span, and icon.
 - Five built-in CSS snippets grouped by the content type they target, plus your own snippets from the snippets folder.
 - Reorder cards by dragging; edit card bodies in the ordinary note editor.
-- Works on desktop and mobile; public APIs only.
+- Cards render on mobile as well as desktop, using public APIs only — but the card action bar is a hover affordance, so on a touch device settings, edit, delete and drag are out of reach (see the limitations).
 - Cards follow along while you edit the dashboard note in a tab.
 
 ## Installation
@@ -175,9 +175,12 @@ Commands (the interface is in Chinese):
 5. **A `%%card:` value cannot contain `;`** (the field separator), and a token without `=` is not representable. Rather than silently dropping what it cannot represent, the plugin refuses to rewrite such a line and tells you to fix it by hand.
 6. **CSS snippets must not use `@import`.** Such a snippet is rejected and logged, and the card renders without it.
 7. **`css=auto` only detects content from the source** — fenced code-block languages and `.base` embeds — not from the rendered DOM.
-8. **Obsidian 1.9.0 or newer is required.** `@scope` needs Chromium 118+, and `base` blocks were introduced in 1.9.0, so `minAppVersion` is 1.9.0. All features use public APIs, which is why the plugin works on mobile.
+8. **Obsidian 1.9.0 or newer is required.** `@scope` needs Chromium 118+, and `base` blocks were introduced in 1.9.0, so `minAppVersion` is 1.9.0. All features use public APIs, which is why the plugin loads on mobile and the cards render there.
 9. **`builtin:dataview` has not been calibrated against a live Dataview install.** Its selectors come from Dataview's own stylesheet, but the elements Dataview actually wraps its blocks in were not confirmed in a vault with Dataview installed. If the compaction does not take effect, those selectors need adjusting against the real DOM.
 10. **Non-goals.** Cards cannot be folded, nested or edited inline, and a card cannot live in its own file — a card is a section of the dashboard note and nothing more. The `%%card: %%` line is visible as dimmed text in Live Preview.
+11. **The card action bar is hover-only.** It is revealed by `:hover`/`:focus-within` on the card, and its controls are non-focusable `span`s. A touch device has no hover and there is no keyboard route to them, so settings, edit, delete and drag are desktop-only. The cards themselves render on mobile.
+12. **The dashboard file must be a Markdown note.** A path that does not end in `.md` is refused: the home view reports the file as missing, and creating it fails with a notice. It cannot be used to point the plugin at, for instance, a `.canvas`.
+13. **Two commands create the dashboard file when it is missing.** `新建卡片` and `在标签页打开仪表盘` create the note at whatever path the setting currently holds, without asking; `新建卡片` then appends a card to it. A typo in the path leaves a stray note behind instead of failing.
 
 ## License
 
