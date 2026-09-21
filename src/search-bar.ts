@@ -12,8 +12,6 @@ export interface SearchCandidate {
   kind: "file" | "bookmark" | "recent";
 }
 
-const MAX_FILE_SUGGESTIONS = 200;
-
 export function rememberRecentFile(
   settings: CardHomeTabSettings,
   path: string,
@@ -110,12 +108,13 @@ class CandidateSuggest extends AbstractInputSuggest<SearchCandidate> {
     candidates: SearchCandidate[],
     emptyState: SearchCandidate[],
     showPath: boolean,
+    limit: number,
   ) {
     super(app, inputEl);
     this.candidates = candidates;
     this.emptyState = emptyState;
     this.showPath = showPath;
-    this.limit = MAX_FILE_SUGGESTIONS;
+    this.limit = limit;
   }
 
   protected getSuggestions(query: string): SearchCandidate[] {
@@ -157,16 +156,30 @@ export function renderSearchBar(
   candidates: SearchCandidate[],
   emptyState: SearchCandidate[],
   onOpen: (candidate: SearchCandidate, newLeaf: boolean) => void,
-): void {
+): () => void {
   const wrapper = root.createDiv({ cls: "home-tab-search" });
   const input = wrapper.createEl("input", {
     cls: "home-tab-search-input",
     attr: { type: "text", placeholder: "搜索笔记…" },
   });
 
-  const suggest = new CandidateSuggest(app, input, candidates, emptyState, settings.showPath);
+  const suggest = new CandidateSuggest(
+    app,
+    input,
+    candidates,
+    emptyState,
+    settings.showPath,
+    settings.maxResults,
+  );
   suggest.onSelect((candidate, event) => {
     input.value = "";
     onOpen(candidate, event.ctrlKey || event.metaKey);
   });
+
+  // 必须把关闭动作交回调用方。`AbstractInputSuggest` 会在自己那侧挂一个弹出层，
+  // 而 HomeView 每次重渲染都会 `root.empty()` 掉输入框——DOM 节点没了，suggest 实例
+  // 却还活着，弹出的列表就可能留在页面上。返回一个清理函数，由视图在重渲染/关闭时调用。
+  return () => {
+    suggest.close();
+  };
 }

@@ -15,6 +15,7 @@ export class HomeView extends ItemView {
   private readonly plugin: CardHomeTabPlugin;
   private rootEl: HTMLElement | null = null;
   private cardViews: CardView[] = [];
+  private disposeSearch: (() => void) | null = null;
   private renderToken = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: CardHomeTabPlugin) {
@@ -44,6 +45,8 @@ export class HomeView extends ItemView {
   async onClose(): Promise<void> {
     this.renderToken++;
     this.disposeCards();
+    this.disposeSearch?.();
+    this.disposeSearch = null;
     this.rootEl = null;
     this.contentEl.empty();
   }
@@ -55,6 +58,8 @@ export class HomeView extends ItemView {
       return;
     }
     this.disposeCards();
+    this.disposeSearch?.();
+    this.disposeSearch = null;
     root.empty();
     if (!this.plugin.store.exists()) {
       this.renderMissingFile(root);
@@ -90,7 +95,7 @@ export class HomeView extends ItemView {
       const emptyState = candidates
         .filter((candidate) => candidate.kind !== "file")
         .slice(0, Math.max(this.plugin.settings.maxResults, this.plugin.settings.maxRecentFiles));
-      renderSearchBar(
+      this.disposeSearch = renderSearchBar(
         stage,
         this.app,
         this.plugin.settings,
