@@ -38,7 +38,11 @@ export class CardSettingsModal extends Modal {
     };
     // 只挑出非 auto 的引用作为复选框状态；列表里没有的引用（例如手写的、或片段文件
     // 已被删除的）会一直留在 selectedSnippets 里，应用时原样回写，不会被这里吞掉。
-    this.selectedSnippets = this.draft.css.filter((ref) => ref !== AUTO_CSS);
+    // 手写 `%%card: css=base%%` 里的裸片段名合法（resolveSnippetRefs 会当成 builtin:），
+    // 但列表里的 ref 写作 `builtin:base`，不归一化的话复选框会是未勾选、与文件对不上。
+    this.selectedSnippets = this.draft.css
+      .filter((ref) => ref !== AUTO_CSS)
+      .map((ref) => (ref.includes(":") ? ref : `builtin:${ref}`));
     this.iconValue = this.draft.icon;
     this.spanValue = this.draft.span;
   }

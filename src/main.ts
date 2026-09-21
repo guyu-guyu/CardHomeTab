@@ -197,7 +197,13 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   async removeCard(section: CardSection): Promise<void> {
-    const written = await this.writeDashboard((text) => removeCardInText(text, section));
+    const sections = await this.store.sections();
+    const current = sections.find((candidate) => candidate.start === section.start);
+    if (!current || !isSameCard(section, current)) {
+      new Notice("这张卡片已经不存在了，可能文件已被改动");
+      return;
+    }
+    const written = await this.writeDashboard((text) => removeCardInText(text, current));
     if (!written) {
       return;
     }
