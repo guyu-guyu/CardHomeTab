@@ -1,0 +1,20 @@
+esbuild.config.mjs
+  h_d9088715075e51 24
+src/card.ts
+  h_d9088715075e51 1-117
+src/home-view.ts
+  h_d9088715075e51 2-4,7,14-15,42,48,53,59-100
+styles.css
+  h_d9088715075e51 22-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "adaf3733317f7fbf0ef85b9f1c5dee904e72cbb8",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
