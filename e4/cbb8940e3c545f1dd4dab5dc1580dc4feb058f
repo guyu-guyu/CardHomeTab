@@ -1,0 +1,16 @@
+src/card-grid.ts
+  h_d9088715075e51 124-129,137-138
+tests/card-grid-drag.test.ts
+  h_d9088715075e51 16-37,45-46,225-228,283,286-290,295-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e4cbb8940e3c545f1dd4dab5dc1580dc4feb058f",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
