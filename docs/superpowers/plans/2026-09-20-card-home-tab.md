@@ -4788,7 +4788,9 @@ export class CardSettingsModal extends Modal {
       icon: args.section.meta.icon,
       entries: args.section.meta.entries.map((entry) => ({ ...entry })),
     };
-    this.selectedSnippets = this.draft.css.filter((ref) => ref !== "auto");
+    this.selectedSnippets = this.draft.css
+      .filter((ref) => ref !== AUTO_CSS)
+      .map((ref) => (ref.includes(":") ? ref : `builtin:${ref}`));
     this.iconValue = this.draft.icon;
     this.spanValue = this.draft.span;
   }
@@ -4922,9 +4924,11 @@ export class CardSettingsModal extends Modal {
 }
 ```
 
+`selectedSnippets` 那一步要把裸名补成 `builtin:` 前缀。手写 `%%card: css=base%%` 是合法的（`resolveSnippetRefs` 就是这么解释的），而片段列表里的 ref 是 `builtin:base`；不归一化的话，用户手写的短名在弹窗里会显示成**未勾选**——虽然直接点"应用"不会丢数据（`selectedSnippets` 仍持有 `base`），但显示与文件内容对不上，用户会以为设置没生效。
+
 - [ ] **Step 2: 接进插件**
 
-`main.ts`：删掉 Task 10 的占位实现，换成：
+`main.ts`：删掉 Task 9 留下的占位实现，换成：
 
 ```ts
   openCardSettings(section: CardSection): void {
@@ -4941,13 +4945,45 @@ export class CardSettingsModal extends Modal {
   async applyCardMeta(section: CardSection, meta: CardMeta): Promise<void> {
     const sections = await this.store.sections();
     const current = sections.find((candidate) => candidate.start === section.start);
-    if (!current) {
+    if (!current || !isSameCard(section, current)) {
       new Notice("这张卡片已经不存在了，可能文件已被改动");
       return;
     }
-    await this.markSelfWriting(async () => {
-      await this.store.process((text) => updateCardMetaInText(text, current, meta));
-    });
+    const written = await this.writeDashboard((text) => updateCardMetaInText(text, current, meta));
+    if (!written) {
+      return;
+    }
+    this.refreshHome();
+  }
+```
+
+**只按 `start` 找是不够的，这一点必须实测记住。** 卡片首尾相接，所以删掉第 k 张之后，第 k+1 张的 `start` 恰好等于第 k 张原来的 `start`——`sections.find(c => c.start === section.start)` 会命中**下一张卡**，于是弹窗里那张卡（其实已经被删了）的设置会被写进它的继任者，并且覆盖对方手写的 `%%card: … %%` 行。所以还要比对标题与规范化后的元数据：
+
+```ts
+function isSameCard(opened: CardSection, current: CardSection): boolean {
+  return (
+    opened.title === current.title &&
+    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
+  );
+}
+```
+
+对不上就只弹提示、不写盘。确认通过后用**新的** `current` 偏移去改，而不是弹窗手里的旧值。
+
+`removeCard` 有完全相同的暴露面，同样要加这道守卫，否则文件在渲染后变过时可能删错 section：
+
+```ts
+  async removeCard(section: CardSection): Promise<void> {
+    const sections = await this.store.sections();
+    const current = sections.find((candidate) => candidate.start === section.start);
+    if (!current || !isSameCard(section, current)) {
+      new Notice("这张卡片已经不存在了，可能文件已被改动");
+      return;
+    }
+    const written = await this.writeDashboard((text) => removeCardInText(text, current));
+    if (!written) {
+      return;
+    }
     this.refreshHome();
   }
 ```
