@@ -40,20 +40,27 @@ function cardRects(gridEl: HTMLElement): Rect[] {
 }
 
 /**
- * 把 dragstart 载荷与网格上的备份下标解析成"被拖卡片的起始下标"。
+ * 当前正在被拖拽的卡片下标。一次只可能有一次拖拽，所以状态放模块级，
+ * **不要**放在 `gridEl.dataset` 上：那样它只对"源网格"可见，而 `dragover`/`drop`
+ * 是**目标**卡片的处理器在跑，两个网格（例如分屏或弹出窗口里的第二个首页视图）
+ * 之间拖拽就会被自己的闸门挡掉。
+ */
+let activeDragIndex: number | null = null;
+
+/**
+ * 把 dragstart 载荷与拖拽中的下标解析成"被拖卡片的起始下标"。
  *
  * 两路都拿不到就返回 `null`——**不要**退回调用方自己的 `index`：drop 事件落在目标卡片上，
  * 那张卡片闭包里的 `index` 就是它自己，拿它当 `from` 会让 `target === from` 恒成立、
  * `onDrop` 永不触发，正好退化成"拖了等于没拖"那个静默失效。
  */
-export function resolveDragIndex(payload: string, marker: string | undefined): number | null {
-  const raw = payload.length > 0 ? payload : (marker ?? "");
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isNaN(parsed) ? null : parsed;
+export function resolveDragIndex(payload: string, marker: number | null): number | null {
+  const parsed = Number.parseInt(payload, 10);
+  return Number.isNaN(parsed) ? marker : parsed;
 }
 
 export function enableCardDrag(args: DragArgs): () => void {
-  const { gridEl, cardEl, handleEl, onDrop, isEnabled } = args;
+  const { cardEl, handleEl, onDrop, isEnabled } = args;
   let dragging = false;
 
   const enableDraggable = (): void => {
@@ -68,9 +75,12 @@ export function enableCardDrag(args: DragArgs): () => void {
    * 只有"卡片自己就是拖拽源"才算卡片拖拽。
    *
    * 卡片正文里的链接本身可拖，它的 `dragstart` 会冒泡到卡片上；不挡住的话，一次链接
-   * （或选区）拖拽会被当成卡片拖拽：卡片被加上 `is-dragging`，本卡下标被写进
-   * `gridEl.dataset`，随后在别的卡片上松手就会真的调 `onDrop`、改写仪表盘文件。
+   * （或选区）拖拽会被当成卡片拖拽：卡片被加上 `is-dragging`，本卡下标被记成模块级的
+   * 拖拽中下标，随后在别的卡片上松手就会真的调 `onDrop`、改写仪表盘文件。
    * 卡片是拖拽源时 `event.target` 就是 cardEl；链接是拖拽源时 target 是那个 `<a>`。
+   *
+   * **不要**改成 `cardEl.contains(event.target)`：链接正是 cardEl 的后代，那样等于把
+   * 刚挡掉的链接拖拽又放回来。
    */
   const handleDragStart = (event: DragEvent): void => {
     if (!isEnabled() || event.target !== cardEl) {
@@ -81,7 +91,7 @@ export function enableCardDrag(args: DragArgs): () => void {
     // 被拖卡片的下标必须另走一条通道：drop 事件落在指针下方的元素上，也就是「目标卡片」，
     // 那个卡片的闭包 index 是它自己。只信闭包的话，computeDropIndex 在目标卡片内部永远
     // 返回它自己的槽位，target === index 恒成立，onDrop 一次都不会触发（拖了等于没拖）。
-    gridEl.dataset["draggingIndex"] = String(args.index);
+    activeDragIndex = args.index;
     if (event.dataTransfer) {
       event.dataTransfer.setData("text/plain", String(args.index));
       event.dataTransfer.effectAllowed = "move";
@@ -89,13 +99,13 @@ export function enableCardDrag(args: DragArgs): () => void {
   };
 
   /**
-   * 网格上有"拖拽中"的标记，是"这次 drag 是不是我们自己发起"的**共享**信号。
+   * "这次 drag 是不是我们自己发起的"。
    *
    * 不能用各卡闭包里的 `dragging`：drop 落在目标卡片上，那张卡的 `dragging` 必然为 false。
    * 同时这也让 `dragover` 只为我们自己的拖拽 `preventDefault()`——否则从系统里拖进来的
    * 文件会被卡片当成可落点吞掉。
    */
-  const isCardDrag = (): boolean => gridEl.dataset["draggingIndex"] !== undefined;
+  const isCardDrag = (): boolean => activeDragIndex !== null;
 
   const handleDragOver = (event: DragEvent): void => {
     if (!isEnabled() || !isCardDrag()) {
@@ -110,14 +120,11 @@ export function enableCardDrag(args: DragArgs): () => void {
       return;
     }
     event.preventDefault();
-    const from = resolveDragIndex(
-      event.dataTransfer?.getData("text/plain") ?? "",
-      gridEl.dataset["draggingIndex"],
-    );
+    const from = resolveDragIndex(event.dataTransfer?.getData("text/plain") ?? "", activeDragIndex);
     if (from === null) {
       return;
     }
-    let target = computeDropIndex(cardRects(gridEl), event.clientX, event.clientY);
+    let target = computeDropIndex(cardRects(args.gridEl), event.clientX, event.clientY);
     if (target > from) {
       target -= 1;
     }
@@ -128,8 +135,8 @@ export function enableCardDrag(args: DragArgs): () => void {
 
   const handleDragEnd = (): void => {
     dragging = false;
+    activeDragIndex = null;
     cardEl.removeClass("is-dragging");
-    delete gridEl.dataset["draggingIndex"];
     disableDraggable();
   };
 

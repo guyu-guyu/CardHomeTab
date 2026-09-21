@@ -11,8 +11,11 @@ import { enableCardDrag } from "../src/card-grid";
  * onDrop 一次都不会触发——拖了等于没拖，而且不会有任何报错。
  *
  * 另有两道闸门也在这里钉住：dragstart 必须**卡片自己就是拖拽源**（正文里链接的 dragstart
- * 会冒泡到卡片上），以及 dragover / drop 只认「网格上有我们自己的拖拽标记」——否则从系统里
+ * 会冒泡到卡片上），以及 dragover / drop 只认「模块里有在途的拖拽下标」——否则从系统里
  * 拖进来的文件会被卡片当成可落点吞掉，链接拖拽甚至会变成一次真实的换序写盘。
+ *
+ * 在途下标是模块级状态（这样跨网格、跨窗口的拖拽才认得出自己是发起方），所以每条用例都得
+ * 自己把状态收干净：一律用真实的 `dragend` 收尾，不额外引出测试专用的复位接口。
  */
 
 type Listener = (event: unknown) => void;
@@ -295,14 +298,21 @@ describe("enableCardDrag", () => {
     h.cards[0]!.fire("dragstart", start);
 
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
-    expect(h.grid.dataset["draggingIndex"]).toBeUndefined();
     expect(start.dataTransfer.payload).toBeNull();
 
     // 松在另一张卡片上：这不是卡片拖拽，既不该吞掉这次拖拽，也不该调 onDrop 改写文件
+    const over = dragEvent(290, 50);
+    h.cards[2]!.fire("dragover", over);
+    expect(over.prevented).toBe(false);
+
     const drop = dragEvent(290, 50, start.dataTransfer.payload);
     h.cards[2]!.fire("drop", drop);
     expect(drop.prevented).toBe(false);
     expect(h.dropped).toEqual([]);
+
+    // 真实浏览器里链接拖拽收尾也会在拖拽源上派发 dragend（冒泡到卡片），这里照做：
+    // 既走的是真实代码路径，也保证这次手势不给后面的用例留下模块级的在途下标。
+    h.cards[0]!.fire("dragend", dragEvent(0, 0));
     h.dispose();
   });
 
@@ -313,7 +323,7 @@ describe("enableCardDrag", () => {
     h.cards[2]!.fire("dragover", over);
     expect(over.prevented).toBe(false);
 
-    // 载荷里带一个看着合法的下标也没用：网格上没有拖拽标记就不认
+    // 载荷里带一个看着合法的下标也没用：模块里没有在途下标就不认
     const drop = dragEvent(290, 50, "0");
     h.cards[2]!.fire("drop", drop);
     expect(drop.prevented).toBe(false);
@@ -325,13 +335,24 @@ describe("enableCardDrag", () => {
     const h = harness();
     h.handles[0]!.fire("pointerdown", {});
     h.cards[0]!.fire("dragstart", dragEvent(0, 0));
-    h.cards[0]!.fire("dragover", dragEvent(290, 50));
+    // 拖拽在途：我们自己的 dragover 要被放行，下面 dragend 之后同一次观察必须翻过来
+    const over = dragEvent(290, 50);
+    h.cards[2]!.fire("dragover", over);
+    expect(over.prevented).toBe(true);
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(true);
-    expect(h.grid.dataset["draggingIndex"]).toBe("0");
 
     h.cards[0]!.fire("dragend", dragEvent(0, 0));
     expect(h.cards[0]!.hasClass("is-dragging")).toBe(false);
-    expect(h.grid.dataset["draggingIndex"]).toBeUndefined();
+
+    // 收尾之后在途下标已清掉：同样的 dragover / drop 不再被认领，也不会调 onDrop
+    const overAfter = dragEvent(290, 50);
+    h.cards[2]!.fire("dragover", overAfter);
+    expect(overAfter.prevented).toBe(false);
+
+    const dropAfter = dragEvent(290, 50, "0");
+    h.cards[2]!.fire("drop", dropAfter);
+    expect(dropAfter.prevented).toBe(false);
+    expect(h.dropped).toEqual([]);
     h.dispose();
   });
 
@@ -401,7 +422,7 @@ describe("enableCardDrag", () => {
 
     // 解禁后同一次手势应当照常生效
     enabled = true;
-    // 解禁了但还没有卡片拖拽在途（网格上没标记）：仍然不是可落点
+    // 解禁了但还没有卡片拖拽在途（模块里没有在途下标）：仍然不是可落点
     const overIdle = dragEvent(190, 50);
     cards[1]!.fire("dragover", overIdle);
     expect(overIdle.prevented).toBe(false);
@@ -415,5 +436,8 @@ describe("enableCardDrag", () => {
 
     cards[1]!.fire("drop", dragEvent(190, 50, start2.dataTransfer.payload));
     expect(dropped).toEqual([[0, 1]]);
+
+    // 收干净：在途下标是模块级状态，留着会漏给后面的用例
+    cards[0]!.fire("dragend", dragEvent(0, 0));
   });
 });

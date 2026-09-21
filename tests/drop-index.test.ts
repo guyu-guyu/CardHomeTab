@@ -47,20 +47,19 @@ describe("computeDropIndex", () => {
 
 describe("resolveDragIndex", () => {
   it("prefers the dragstart payload", () => {
-    expect(resolveDragIndex("2", "5")).toBe(2);
+    expect(resolveDragIndex("2", 5)).toBe(2);
   });
 
-  it("falls back to the grid marker when the payload is empty", () => {
-    expect(resolveDragIndex("", "5")).toBe(5);
-    expect(resolveDragIndex("", undefined)).toBeNull();
-    expect(resolveDragIndex("", "")).toBeNull();
+  it("falls back to the in-flight index when the payload is empty", () => {
+    expect(resolveDragIndex("", 5)).toBe(5);
   });
 
   it("returns null rather than a guess when neither source is usable", () => {
-    expect(resolveDragIndex("abc", "xyz")).toBeNull();
+    expect(resolveDragIndex("", null)).toBeNull();
+    expect(resolveDragIndex("abc", null)).toBeNull();
   });
 
   it("accepts a numeric prefix", () => {
-    expect(resolveDragIndex("3abc", undefined)).toBe(3);
+    expect(resolveDragIndex("3abc", null)).toBe(3);
   });
 });
