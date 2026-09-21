@@ -1,0 +1,22 @@
+src/builtin-snippets/code.css
+  h_d9088715075e51 2,7,12
+src/builtin-snippets/text.css
+  h_d9088715075e51 2,6,10,14-17,22-23,28,33-34
+src/card.ts
+  h_d9088715075e51 4-17,39,80-82,85-94,96-97,130
+src/home-view.ts
+  h_d9088715075e51 42
+tests/snippet-registry.test.ts
+  h_d9088715075e51 72-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "96868391ce45b0c1fab5f5c7bdf3150a42bf7b61",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
