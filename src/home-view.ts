@@ -17,10 +17,7 @@ export class HomeView extends ItemView {
   }
 
   getDisplayText(): string {
-    // 标签页标题是 UI 文案，Obsidian 的 sentence-case 规则不接受句首的 CamelCase
-    // （"CardHomeTab" 会被判成 "Cardhometab"），且该规则被 eslint-comments 禁止
-    // 用 disable 注释绕过，所以这里改写成句子式；插件名本身仍以 manifest.json 为准。
-    return "Card home tab";
+    return "卡片首页";
   }
 
   getIcon(): string {
