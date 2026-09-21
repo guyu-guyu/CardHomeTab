@@ -1,9 +1,11 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { resolveSnippetRefs } from "./auto-snippets";
+import { renderBackground } from "./background";
 import { CardView } from "./card";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
+import { renderHeader } from "./page-header";
 import { scopedStylesheet } from "./snippet-scope";
 
 export const HOME_VIEW_TYPE = "card-home-tab-view";
@@ -66,7 +68,10 @@ export class HomeView extends ItemView {
       return;
     }
     const sections = parseDashboard(text, this.plugin.settings.cardHeadingLevel);
-    const grid = root.createDiv({ cls: "home-tab-cards" });
+    const stage = root.createDiv({ cls: "home-tab-stage" });
+    renderBackground(stage, this.app, this.plugin.settings);
+    renderHeader(stage, this.app, this.plugin.settings);
+    const grid = stage.createDiv({ cls: "home-tab-cards" });
     grid.style.gridTemplateColumns = `repeat(${this.plugin.settings.gridColumns}, minmax(0, 1fr))`;
 
     for (const section of sections) {

@@ -102,3 +102,64 @@
 .home-card.is-dragging {
   opacity: 0.45;
 }
+
+.home-tab-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-6);
+}
+
+.home-tab-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+
+.home-tab-background-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.home-tab-hero {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.home-tab-cards {
+  position: relative;
+  z-index: 2;
+}
+
+.home-tab-logo {
+  display: flex;
+  color: var(--text-accent);
+}
+
+.home-tab-logo svg {
+  width: calc(3em * var(--home-tab-logo-scale, 1));
+  height: calc(3em * var(--home-tab-logo-scale, 1));
+}
+
+.home-tab-logo img {
+  width: calc(3em * var(--home-tab-logo-scale, 1));
+  height: auto;
+}
+
+.home-tab-logo.is-missing {
+  color: var(--text-faint);
+}
+
+.home-tab-wordmark {
+  line-height: 1.1;
+  color: var(--text-normal);
+}
