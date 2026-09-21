@@ -1,0 +1,18 @@
+src/card-grid.ts
+  h_d9088715075e51 43-51,57-59,63,78-79,81-83,94,102,108,123,127,138
+tests/card-grid-drag.test.ts
+  h_d9088715075e51 14,16-18,304-307,312-315,326,338-341,346-355,425,439-441
+tests/drop-index.test.ts
+  h_d9088715075e51 50,53-54,58-59,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b3d0c6b683a9eab6a2d8479a0329acdeee0b2469",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
