@@ -1,17 +1,32 @@
 import { MarkdownView, Notice, Plugin, type WorkspaceLeaf } from "obsidian";
+import { CardSettingsModal } from "./card-settings";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
   moveCard as moveCardInText,
   removeCard as removeCardInText,
+  updateCardMeta as updateCardMetaInText,
 } from "./dashboard/edit";
-import { DEFAULT_CARD_META } from "./dashboard/metadata";
+import { DEFAULT_CARD_META, serializeCardMeta, type CardMeta } from "./dashboard/metadata";
 import type { CardSection } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
 import { rememberRecentFile } from "./search-bar";
 import { DEFAULT_SETTINGS, mergeSettings, type CardHomeTabSettings } from "./settings";
 import { SnippetRegistry } from "./snippets";
+
+/** 弹窗打开时的 section 与此刻文件里的 section 是否还是同一张卡片。
+ *
+ *  只比 `start` 挡不住「卡片已被删除」：卡片在文档里首尾相接，删掉第 k 张之后，
+ *  第 k+1 张的 start 正好等于第 k 张的旧 start，于是「已删除」会被误判成「还在」，
+ *  把已删卡片的设置写进下一张卡片，并覆盖它自己手写的 `%%card: %%` 行。所以再核对
+ *  标题与元数据是否仍是打开弹窗时的那一张。 */
+function isSameCard(opened: CardSection, current: CardSection): boolean {
+  return (
+    opened.title === current.title &&
+    serializeCardMeta(opened.meta) === serializeCardMeta(current.meta)
+  );
+}
 
 export default class CardHomeTabPlugin extends Plugin {
   settings: CardHomeTabSettings = { ...DEFAULT_SETTINGS, recentFiles: [] };
@@ -163,10 +178,10 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   /** 「新建卡片」命令在 `onload` 里注册，会调用 `addCard`；Task 10 只需把卡片菜单接到
-   *  `removeCard` / `editCard` / `openCardSettings`。`addCard` 与 `removeCard` 两个写操作都经
-   *  `writeDashboard()`，因为 `process()` 是唯一会抛的成员，它的失败必须以 Notice 呈现，
-   *  而不是留下未处理的 rejection；`editCard` 与 `openCardSettings` 不写文件，文件的创建由
-   *  `ensureDashboardFile()` 负责。 */
+   *  `removeCard` / `editCard` / `openCardSettings`。三个写操作都经 `writeDashboard()`，
+   *  因为 `process()` 是唯一会抛的成员，它的失败必须以 Notice 呈现，而不是留下未处理的
+   *  rejection；`editCard` 不写文件，`openCardSettings` 只负责开弹窗，写盘发生在用户点
+   *  「应用」后的 `applyCardMeta`，文件的创建由 `ensureDashboardFile()` 负责。 */
   async addCard(): Promise<void> {
     if (!(await this.ensureDashboardFile())) {
       return;
@@ -224,7 +239,35 @@ export default class CardHomeTabPlugin extends Plugin {
   }
 
   openCardSettings(section: CardSection): void {
-    new Notice(`卡片设置将在后续接入：${section.title}`);
+    new CardSettingsModal({
+      app: this.app,
+      section,
+      snippets: this.snippets,
+      onApply: (meta) => {
+        void this.applyCardMeta(section, meta);
+      },
+    }).open();
+  }
+
+  /** 弹窗是拿「打开那一刻的 section」算出来的 meta，用户可能在这中间改了文件——卡片甚至
+   *  可能已被删除或改标题。所以按 `start` 在当前文本里重新找一次，并用 `isSameCard` 确认还是
+   *  同一张卡：对不上就只提示、不写盘（写下去会改错卡片，甚至覆盖别人手写的 `%%card: %%`）。
+   *  确认通过后用新的 section 偏移去改，而不是弹窗手里的旧值。
+   *
+   *  写盘走 `writeDashboard` 而不是裸 `store.process`：`process()` 在文件缺失时会抛，
+   *  而 `onApply` 是 `void` 调用，裸抛只会留下未处理的 rejection（同 `moveCard` 的既有约定）。*/
+  async applyCardMeta(section: CardSection, meta: CardMeta): Promise<void> {
+    const sections = await this.store.sections();
+    const current = sections.find((candidate) => candidate.start === section.start);
+    if (!current || !isSameCard(section, current)) {
+      new Notice("这张卡片已经不存在了，可能文件已被改动");
+      return;
+    }
+    const written = await this.writeDashboard((text) => updateCardMetaInText(text, current, meta));
+    if (!written) {
+      return;
+    }
+    this.refreshHome();
   }
 
   private async writeDashboard(mutate: (text: string) => string): Promise<boolean> {
