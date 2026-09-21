@@ -3123,13 +3123,28 @@ git commit -m "feat: 插件入口、首页视图骨架与仪表盘缺失提示"
 
 **Files:**
 - Create: `src/card.ts`
-- Modify: `src/home-view.ts`, `src/main.ts`, `styles.css`
+- Modify: `src/home-view.ts`, `src/main.ts`, `esbuild.config.mjs`, `styles.css`
 - Test: 手工验收
 
 **Interfaces:**
 - Consumes: `CardSection`、`sectionBody`（Task 3）；`resolveSnippetRefs`（Task 5）；`scopedStylesheet`（Task 6）；`SnippetRegistry`（Task 7）
 - Produces: `CardCallbacks`、`CardViewArgs`、`class CardView { constructor(args: CardViewArgs); readonly el: HTMLElement; applyStyles(css: string): void; render(body: string, css: string): Promise<void>; destroy(): void }`
-- [ ] **Step 1: 写卡片视图**
+- [ ] **Step 1: 写卡片视图（并先让 esbuild 输出 UTF-8）**
+
+先改 `esbuild.config.mjs`：在 context 选项里加一行
+
+```js
+  charset: "utf8",
+```
+
+esbuild 默认 `charset: "ascii"`，会把所有非 ASCII 字符转义成 `\uXXXX`。功能上没错，但本项目 UI 文案是中文，默认行为会让 `dist/main.js` 里满屏 `\u5361\u7247\u9996\u9875`——读不了，而且后面几步"用 grep 确认某个字符串进了产物"的验收全部失效（实测 `grep -c "卡片首页" dist/main.js` 在没有这行时返回 0，加上才正常）。Obsidian 跑在 Chromium 上、`manifest.json` 与 `styles.css` 本来就是 UTF-8，所以指定 utf8 是安全的。
+
+改完先确认一行：
+
+Run: `npm run build && grep -c "卡片首页" dist/main.js`
+Expected: 大于 0。
+
+然后写卡片视图。
 
 `src/card.ts`：
 
