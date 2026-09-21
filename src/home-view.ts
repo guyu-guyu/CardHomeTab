@@ -39,6 +39,7 @@ export class HomeView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.renderToken++;
     this.disposeCards();
     this.rootEl = null;
     this.contentEl.empty();

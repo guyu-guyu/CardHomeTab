@@ -69,6 +69,18 @@ describe("BUILTIN_SNIPPETS", () => {
       }
     }
   });
+
+  it("never treats markdown-rendered as a descendant, since it sits on the container itself", () => {
+    // card.ts 把 home-card-content 与 markdown-rendered 加在同一个元素上，
+    // 所以 `.home-card-content .markdown-rendered` 去找的是不存在的子元素——整条规则是死的。
+    for (const [name, css] of Object.entries(BUILTIN_SNIPPETS)) {
+      for (const selector of selectorsOf(css)) {
+        expect(selector, `${name} has a dead selector: ${selector}`).not.toContain(
+          ".home-card-content .markdown-rendered",
+        );
+      }
+    }
+  });
 });
 
 describe("parseSnippetRef", () => {
