@@ -3070,7 +3070,8 @@ export default class CardHomeTabPlugin extends Plugin {
 - `snippets!: SnippetRegistry` 字段。片段仓库本身是 Task 7 的产物，但视图骨架之后要靠它渲染卡片样式，提前挂上比 Task 10 再回头改 `onload` 更省事。
 - `editCard` / `addCard` / `removeCard` / `openCardSettings` 四个方法，以及 `new-card` 命令。计划原本把它们放在 Task 10，但本任务已经有了"仪表盘文件缺失"提示与 `process()` 失败路径，这两处都需要写文件的入口，提前落地能让失败的调用链完整可测。`openCardSettings` 此时只是弹一个占位 Notice，Task 14 替换。
 - `removeCard` / `addCard` 里对 `store.process()` 的 `await` 都包在 `try/catch` 中并弹 `Notice`：`process()` 是唯一会抛的方法，而 Obsidian 里未处理的 rejection 只会留在控制台（见进度记录第 36 条）。
-- `editCard` 必须先确认 `view.editor` 存在。`MarkdownView.editor` 是 `editMode?.editor` 的 getter（已在本体 `obsidian.asar` 中核实），**阅读视图下它是 `undefined`**，直接 `.offsetToPos()` 会抛 `TypeError`；而 `openLinkText` 只聚焦已打开的标签页、不会切换阅读/编辑模式，所以用户完全可能停在阅读视图。正确做法是先用 `view.setState({ ...view.getState(), mode: "source" }, { history: false })` 切到源码模式，再取 `editor`；若切换后仍拿不到，则直接返回（打开笔记但不定光标，好过崩）。
+- `editCard` 要按**模式**判断，而不是按 `view.editor` 是否存在。设计意图是"光标与视口定位到该 section 的标题行"，而阅读视图下没有可编辑光标，所以必须先切到源码模式。不要写成 `if (!view.editor)`：`MarkdownView.editor` 在公开类型声明里是**非可选**的（`editor: Editor;`），而且在 `obsidian.asar` 里本体的标签页 `MarkdownView` 用的 getter 是 `get:function(){return this.editMode.editor}`——**没有**空值保护，`editMode` 与 `editMode.editor` 都在视图构造时就建好了。那个带 `?` 的空安全 getter（`editMode?.editor`）属于**内嵌/行内**的 markdown 编辑组件，不是 `getActiveViewOfType(MarkdownView)` 能拿到的那个类。所以 `!view.editor` 永远为假，是一段死代码，而且真正的问题（光标落在隐藏的编辑器上、用户什么都看不到）依然存在。正确判据是 `view.getMode() === "preview"`。
+- `editCard` 必须在内部把异常收干净（`try/catch` + `Notice`），不能让它 reject。Task 10 的调用点写的是 `onEdit: (target) => void this.plugin.editCard(target)`，`void` 会把 rejection 丢掉，只剩控制台里一条未处理拒绝。`openLinkText` 与 `setState` 都可能失败，所以"内部兜住"比"让每个调用点都 `catch`"更可靠。
 
 - [ ] **Step 3: 补样式**
 
@@ -3311,8 +3312,7 @@ export class CardView {
         dashboardPath: this.plugin.store.path,
         cardId,
         callbacks: {
-          onEdit: (target) => void this.plugin.editCard(target),
-          onRemove: (target) => void this.plugin.removeCard(target),
+          onEdit: (target) => void this.plugin.editCard(target),          onRemove: (target) => void this.plugin.removeCard(target),
           onSettings: (target) => this.plugin.openCardSettings(target),
         },
       });
