@@ -1,12 +1,18 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
+import { resolveSnippetRefs } from "./auto-snippets";
+import { CardView } from "./card";
+import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
+import { scopedStylesheet } from "./snippet-scope";
 
 export const HOME_VIEW_TYPE = "card-home-tab-view";
 
 export class HomeView extends ItemView {
   private readonly plugin: CardHomeTabPlugin;
   private rootEl: HTMLElement | null = null;
+  private cardViews: CardView[] = [];
+  private renderToken = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: CardHomeTabPlugin) {
     super(leaf);
@@ -33,21 +39,65 @@ export class HomeView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.disposeCards();
     this.rootEl = null;
     this.contentEl.empty();
   }
 
   async render(): Promise<void> {
+    const token = ++this.renderToken;
     const root = this.rootEl;
     if (!root) {
       return;
     }
+    this.disposeCards();
     root.empty();
     if (!this.plugin.store.exists()) {
       this.renderMissingFile(root);
       return;
     }
-    root.createDiv({ cls: "home-tab-placeholder", text: "卡片区域尚未接入" });
+    const text = await this.plugin.store.read();
+    if (token !== this.renderToken) {
+      return;
+    }
+    if (text === null) {
+      this.renderMissingFile(root);
+      return;
+    }
+    const sections = parseDashboard(text, this.plugin.settings.cardHeadingLevel);
+    const grid = root.createDiv({ cls: "home-tab-cards" });
+    grid.style.gridTemplateColumns = `repeat(${this.plugin.settings.gridColumns}, minmax(0, 1fr))`;
+
+    for (const section of sections) {
+      if (token !== this.renderToken) {
+        return;
+      }
+      const body = sectionBody(text, section);
+      const cardId = `card-${section.index}`;
+      const card = new CardView({
+        app: this.app,
+        section,
+        dashboardPath: this.plugin.store.path,
+        cardId,
+        callbacks: {
+          onEdit: (target) => void this.plugin.editCard(target),
+          onRemove: (target) => void this.plugin.removeCard(target),
+          onSettings: (target) => this.plugin.openCardSettings(target),
+        },
+      });
+      this.cardViews.push(card);
+      grid.appendChild(card.el);
+
+      const parts = await this.plugin.snippets.resolveAll(resolveSnippetRefs(section.meta, body));
+      await card.render(body, scopedStylesheet(parts, cardId));
+    }
+  }
+
+  private disposeCards(): void {
+    for (const card of this.cardViews) {
+      card.destroy();
+    }
+    this.cardViews = [];
   }
 
   private renderMissingFile(root: HTMLElement): void {
