@@ -1,0 +1,18 @@
+src/home-view.ts
+  h_d9088715075e51 97
+src/search-bar.ts
+  h_d9088715075e51 36,43-69
+tests/search-candidates.test.ts
+  h_d9088715075e51 2-3,64-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3e7881ef041324b712b39b242185946a95371511",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
