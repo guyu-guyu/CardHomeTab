@@ -1,0 +1,16 @@
+README.md
+  h_d9088715075e51 39,56
+README.zh.md
+  h_d9088715075e51 37,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e55161aca492bbe58243ceb550e861c4d4a52480",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
