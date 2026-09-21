@@ -3110,6 +3110,7 @@ export default class CardHomeTabPlugin extends Plugin {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-6);
+  overflow: clip;
 }
 
 .home-tab-missing {
@@ -4021,27 +4022,36 @@ export function renderBackground(
   const isDark = document.body.hasClass("theme-dark");
   const preferred = isDark ? settings.backgroundDark : settings.backgroundLight;
   const fallback = isDark ? settings.backgroundLight : settings.backgroundDark;
-  const source = resolveAssetSource(
-    app,
-    settings.backgroundType,
-    preferred.trim().length > 0 ? preferred : fallback,
-  );
+  const source =
+    resolveAssetSource(app, settings.backgroundType, preferred) ??
+    resolveAssetSource(app, settings.backgroundType, fallback);
   if (!source) {
     return;
   }
 
+  const bleed = settings.backgroundBlur * 2;
   const layer = root.createDiv({ cls: "home-tab-background" });
   layer.style.backgroundImage = `url("${source}")`;
   if (settings.backgroundBlur > 0) {
     layer.style.filter = `blur(${settings.backgroundBlur}px)`;
-    layer.style.inset = `-${settings.backgroundBlur * 2}px`;
+    layer.style.inset = `-${bleed}px`;
   }
   if (settings.backgroundDim > 0) {
     const veil = root.createDiv({ cls: "home-tab-background-veil" });
     veil.style.backgroundColor = `rgba(0, 0, 0, ${settings.backgroundDim / 100})`;
+    // 遮罩必须和背景图一样外扩，否则模糊溢出的那一圈是**没被压暗**的，
+    // 图片四周会出现一圈比中间更亮的边。
+    if (bleed > 0) {
+      veil.style.inset = `-${bleed}px`;
+    }
   }
 }
 ```
+
+两处改动值得说明：
+
+- **回退要按"能否解析"而不是"是否为空"**。原写法只在首选值为空串时才用另一套。于是"暗色图填了但文件已删"这种最常见的手滑，会直接返回、什么都不画——用户明明两套都配了，却看到一片空白且没有任何提示。改成 `??` 串联：首选解析不出来就用另一套。
+- **模糊外扩必须被裁掉**。`inset: -2N` 让图层比容器大，而 `.home-tab-root` 没有 `overflow`，外层 `.home-tab-view-content` 是 `overflow: auto`——`2N > 24`（`.home-tab-root` 的 `padding: var(--size-4-6)`）即 `backgroundBlur ≥ 13` 时，图层会撑出滚动条，而设置允许到 40。修法是给 `.home-tab-root` 加 `overflow: clip`（不是 `hidden`：`clip` 不会把自己变成滚动容器），既裁掉外扩又修掉滚动条。**这条规则定义在 Task 9 的样式块里**（`.home-tab-root` 只有那一处定义），改那里，不要在 Task 12 的追加块里重复定义。
 
 `src/page-header.ts`：
 
