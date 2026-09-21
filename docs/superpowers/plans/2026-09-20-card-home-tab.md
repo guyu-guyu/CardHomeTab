@@ -3974,7 +3974,7 @@ git commit -m "feat: 卡片拖拽排序，直接改写仪表盘 section 顺序"
 
 **Files:**
 - Create: `src/background.ts`, `src/page-header.ts`
-- Modify: `src/home-view.ts`, `styles.css`
+- Modify: `src/home-view.ts`, `src/main.ts`, `styles.css`
 - Test: 手工验收
 
 **Interfaces:**
@@ -3986,7 +3986,7 @@ git commit -m "feat: 卡片拖拽排序，直接改写仪表盘 section 顺序"
 `src/background.ts`：
 
 ```ts
-import { getResourcePath, type App } from "obsidian";
+import type { App } from "obsidian";
 import type { CardHomeTabSettings } from "./settings";
 
 export function resolveAssetSource(
@@ -4002,8 +4002,13 @@ export function resolveAssetSource(
     return trimmed;
   }
   const file = app.metadataCache.getFirstLinkpathDest(trimmed, "");
-  return file ? getResourcePath(file) : null;
+  return file ? app.vault.getResourcePath(file) : null;
 }
+
+// `getResourcePath` 不是模块级导出——不要写成 `import { getResourcePath } from "obsidian"`。
+// 在类型声明里它挂在若干类上，这里要用的是 `Vault.getResourcePath(file: TFile): string`
+// （已在本仓 node_modules/obsidian/obsidian.d.ts 核实：export function 中没有任何 resource
+// 相关导出）。写成模块导入会直接 TS2305 编不过。
 
 export function renderBackground(
   root: HTMLElement,
@@ -4059,7 +4064,15 @@ export function renderHeader(
     } else {
       const source = resolveAssetSource(app, settings.logoType, settings.logoValue);
       if (source) {
-        logo.createEl("img", { attr: { src: source, alt: "" } });
+        const image = logo.createEl("img", { attr: { src: source, alt: "" } });
+        // `url` 类型不做存在性校验（网络图片也没法在渲染前校验），所以一个坏链接
+        // 只会得到浏览器的破图占位。挂个 error 兜底换成占位图标，与"仓库图片找不到"
+        // 的降级表现保持一致。
+        image.addEventListener("error", () => {
+          logo.empty();
+          setIcon(logo, "lucide-image-off");
+          logo.addClass("is-missing");
+        });
       } else {
         setIcon(logo, "lucide-image-off");
         logo.addClass("is-missing");
@@ -4100,7 +4113,23 @@ import { renderBackground } from "./background";
 import { renderHeader } from "./page-header";
 ```
 
-- [ ] **Step 3: 补样式**
+- [ ] **Step 3: 让主题切换即时生效**
+
+`renderBackground` 在渲染那一刻读 `document.body.hasClass("theme-dark")`，所以亮/暗背景只在**重新渲染**时才会换。只插入 `stage` 的话，"切换主题 → 背景跟着换"这条验收过不了：Obsidian 切主题会改 body 上的类，但不会重跑我们的 `render()`。
+
+`src/main.ts` 的 `onload` 里补一个监听（`css-change` 是公开的 Workspace 事件，已在 `node_modules/obsidian/obsidian.d.ts` 核实）：
+
+```ts
+    this.registerEvent(
+      this.app.workspace.on("css-change", () => {
+        this.refreshHome();
+      }),
+    );
+```
+
+放在已有的 `vault.on("modify", ...)` 注册旁边即可。主题切换很少发生，整页重渲染的代价可以接受，不必单独做一层只重画背景的优化。
+
+- [ ] **Step 4: 补样式**
 
 `styles.css` 追加：
 
@@ -4167,7 +4196,7 @@ import { renderHeader } from "./page-header";
 }
 ```
 
-- [ ] **Step 4: 手工验收**
+- [ ] **Step 5: 手工验收**
 
 设置页在 Task 15 才做，本任务直接改 `.obsidian/plugins/card-home-tab/data.json` 验证（改完重启插件）：
 
@@ -4179,10 +4208,10 @@ import { renderHeader } from "./page-header";
 - 切换亮/暗主题 → 两套背景各自生效。
 - 卡片仍可正常点击、拖拽、选中文字（背景层不吞事件）。
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
-git add src/background.ts src/page-header.ts src/home-view.ts styles.css
+git add src/background.ts src/page-header.ts src/home-view.ts src/main.ts styles.css
 git commit -m "feat: 自定义 logo、wordmark 与背景图层"
 ```
 
