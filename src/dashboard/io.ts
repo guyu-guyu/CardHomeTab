@@ -19,7 +19,14 @@ export class DashboardStore {
   }
 
   get file(): TFile | null {
-    const found = this.app.vault.getAbstractFileByPath(this.path);
+    const wanted = this.path;
+    // 只认 Markdown。仪表盘路径是用户手填的自由文本，指到 .json / .canvas / .txt 上时，
+    // 首页会把它当卡片笔记解析，而删卡、挪卡、改卡设置都会经 vault.process 把那个文件
+    // **整体改写**成仪表盘内容——那是在改坏用户别的文件。返回 null 让它退化成"文件缺失"。
+    if (!wanted.toLowerCase().endsWith(".md")) {
+      return null;
+    }
+    const found = this.app.vault.getAbstractFileByPath(wanted);
     return found instanceof TFile ? found : null;
   }
 
@@ -32,6 +39,9 @@ export class DashboardStore {
   }
 
   async create(): Promise<void> {
+    if (!this.path.toLowerCase().endsWith(".md")) {
+      throw new Error(`仪表盘文件必须是 Markdown 笔记：${this.path}`);
+    }
     if (this.exists()) {
       return;
     }

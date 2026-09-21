@@ -249,6 +249,23 @@
   color: var(--text-faint);
 }
 
+.home-tab-snippet-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.home-tab-snippet-settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--size-4-2);
+}
+
+.home-tab-snippet-settings-name {
+  flex: 0 0 auto;
+}
+
 .home-tab-setting-footer {
   display: flex;
   justify-content: flex-end;

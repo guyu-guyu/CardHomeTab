@@ -356,15 +356,23 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName("片段").setHeading();
 
+    // 容器同步建好、异步只往里填内容。若把这个 div 也放进 then 回调里，
+    // `刷新列表` 或 `logoType` 触发的 renderTab() 可能先跑完，于是同一个重建过的
+    // 容器上挂出第二份列表；顺带也让"片段目录"那行不会排在自己的列表上面。
+    const list = containerEl.createDiv({ cls: "home-tab-snippet-settings" });
+
     void this.plugin.snippets.ensureUserNames().then(() => {
-      const list = containerEl.createDiv({ cls: "home-tab-snippet-settings" });
+      if (!list.isConnected) {
+        return;
+      }
+      list.empty();
       for (const info of this.plugin.snippets.list()) {
         const row = list.createDiv({ cls: "home-tab-snippet-settings-row" });
-        row.createSpan({ text: info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}` });
+        row.createSpan({
+          cls: "home-tab-snippet-settings-name",
+          text: info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}`,
+        });
         row.createSpan({ cls: "home-tab-snippet-path", text: info.path ?? "随插件发布" });
-      }
-      if (list.childElementCount === 0) {
-        list.createDiv({ text: "还没有任何片段。" });
       }
     });
 
