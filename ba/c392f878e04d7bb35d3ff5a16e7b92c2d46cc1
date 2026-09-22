@@ -1,0 +1,26 @@
+CHANGELOG.md
+  h_d9088715075e51 13-14
+README.md
+  h_d9088715075e51 135
+README.zh.md
+  h_d9088715075e51 133
+src/card-grid.ts
+  h_d9088715075e51 118-119,178-293
+src/home-view.ts
+  h_d9088715075e51 4,23,57-58,76-77,133-135
+styles.css
+  h_d9088715075e51 122-135
+tests/drop-indicator.test.ts
+  h_d9088715075e51 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bac392f878e04d7bb35d3ff5a16e7b92c2d46cc1",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
