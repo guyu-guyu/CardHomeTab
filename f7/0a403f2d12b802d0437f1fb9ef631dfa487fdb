@@ -1,0 +1,30 @@
+src/card-settings.ts
+  h_d9088715075e51 2,4,17,36-40,42-44,117-126,130-131,164
+src/home-view.ts
+  h_d9088715075e51 10,138
+src/settings-tab.ts
+  h_d9088715075e51 369-374,376-381
+src/snippets.ts
+  h_d9088715075e51 6-7,10-18,25,27,30-52,54,83-84,114-115,118
+styles.css
+  h_d9088715075e51 275-277
+tests/metadata.test.ts
+  h_d9088715075e51 82-83,95
+tests/snippet-registry.test.ts
+  h_d9088715075e51 3,5-8,11-12,15-17,20-24,27-31,33,35-37,40-42,45-46,49-51,54-55,61-62,66,85-86
+tests/snippet-scope.test.ts
+  h_d9088715075e51 92,102-103,122,127
+vitest.config.ts
+  h_d9088715075e51 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f70a403f2d12b802d0437f1fb9ef631dfa487fdb",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
