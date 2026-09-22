@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_d9088715075e51 3-17
+README.md
+  h_d9088715075e51 17-18,46,50,68,73,80-81,86,88,90,92,94-98,100,104,159-160,170,172,177
+README.zh.md
+  h_d9088715075e51 15-16,44,48,66,71,78-79,84,86,88,90,92-96,98,102,157-158,168,170,175
+docs/content-styles.md
+  h_d9088715075e51 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "42946fb8e7bfa7f94752531d77948861d6f65593",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
