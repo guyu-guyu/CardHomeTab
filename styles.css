@@ -27,6 +27,15 @@
   align-items: start;
 }
 
+/* 瀑布流由 masonry.ts 在接上 ResizeObserver 之后才加这个类。
+   竖向间距改为靠"多占几个细行"来留，所以这里必须把 row-gap 归零，否则可用高度会变成
+   K*unit + (K-1)*gap，粒度被 gap 撑得很粗、卡片底部会多出一大截。
+   把归零放在这个类里而不是直接改 .home-tab-cards：老环境没有 ResizeObserver 时不加此类，
+   退回普通 Grid 且卡片之间仍有间距，不会挤成一坨。 */
+.home-tab-cards.is-masonry {
+  row-gap: 0;
+}
+
 @media (max-width: 900px) {
   .home-tab-cards {
     grid-template-columns: minmax(0, 1fr) !important;

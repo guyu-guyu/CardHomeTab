@@ -39,10 +39,11 @@ describe("content style registry", () => {
   it("has no gate class in the stylesheet that the registry does not declare", () => {
     const declared = new Set(features.map((f) => f.className));
     const used = new Set(stylesheet.match(/is-[a-z0-9-]+/g) ?? []);
-    // 拖拽态不是内容样式特性，它由 card-grid 直接加在卡片上
-    used.delete("is-dragging");
-    used.delete("is-missing");
-    used.delete("is-column");
+    // 以下都不是内容样式开关，而是别处自己管理的状态类：
+    used.delete("is-dragging"); // card-grid 拖拽态，直接加在卡片上
+    used.delete("is-missing"); // page-header 的 logo 加载失败态
+    used.delete("is-column"); // 弹窗里设置行的纵向排列
+    used.delete("is-masonry"); // masonry.ts 接上 ResizeObserver 后才加的布局态
     for (const gate of used) {
       expect(declared.has(gate), `stylesheet uses .${gate}, which no feature declares`).toBe(true);
     }

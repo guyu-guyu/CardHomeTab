@@ -2,6 +2,7 @@ import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { renderBackground } from "./background";
 import { CardView } from "./card";
 import { contentStyleFeatures } from "./content-styles";
+import { enableMasonry } from "./masonry";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
@@ -17,6 +18,7 @@ export class HomeView extends ItemView {
   private rootEl: HTMLElement | null = null;
   private cardViews: CardView[] = [];
   private disposeSearch: (() => void) | null = null;
+  private disposeMasonry: (() => void) | null = null;
   private renderToken = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: CardHomeTabPlugin) {
@@ -48,6 +50,8 @@ export class HomeView extends ItemView {
     this.disposeCards();
     this.disposeSearch?.();
     this.disposeSearch = null;
+    this.disposeMasonry?.();
+    this.disposeMasonry = null;
     this.rootEl = null;
     this.contentEl.empty();
   }
@@ -61,6 +65,10 @@ export class HomeView extends ItemView {
     this.disposeCards();
     this.disposeSearch?.();
     this.disposeSearch = null;
+    // 旧网格马上会被 root.empty() 丢掉，但 ResizeObserver 仍持着它与它的卡片，
+    // 不断开就会在已脱离文档的节点上继续回调。
+    this.disposeMasonry?.();
+    this.disposeMasonry = null;
     root.empty();
     // 内容样式的开闸类。必须用幂等的 toggleClass 而不是 addClass：rootEl 在 onOpen()
     // 建一次、render() 只清空它的内容，它本身跨次渲染存活，addClass 会让关掉开关后仍残留。
@@ -149,6 +157,9 @@ export class HomeView extends ItemView {
       }
       await card.render(body, scopedStylesheet(parts, cardId));
     }
+    // 全部卡片都建好、正文也渲染过之后再接瀑布流：此时才有完整的卡片列表可观察。
+    // 异步内容（图片、base、dataview）之后再撑高时，由 ResizeObserver 负责重算。
+    this.disposeMasonry = enableMasonry(grid);
   }
 
   private disposeCards(): void {
