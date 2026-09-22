@@ -1,0 +1,28 @@
+eslint.config.mjs
+  h_d9088715075e51 15-24
+src/content-styles.ts
+  h_d9088715075e51 1-68
+src/home-view.ts
+  h_d9088715075e51 4,65-71
+src/settings-tab.ts
+  h_d9088715075e51 12,358-381
+src/settings.ts
+  h_d9088715075e51 1-6,12-13,72-75,159-175,225
+styles.css
+  h_d9088715075e51 279-418
+tests/content-styles.test.ts
+  h_d9088715075e51 1-88
+tests/styles.test.ts
+  h_d9088715075e51 1-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "34fd0821a9f5f85ac0f3771b4fed0e29220f0605",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
