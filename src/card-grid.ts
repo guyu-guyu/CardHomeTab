@@ -115,7 +115,8 @@ export function enableCardDrag(args: DragArgs): () => void {
     if (!isEnabled() || !isCardDrag(event)) {
       return;
     }
-    // 只为放行 drop；不做落点预览，所以不在这里写任何 dataset。
+    // 只为放行 drop。落点指示线不在这里画：它是整个网格共一条，由
+    // enableDropIndicator 在网格层统一处理（每张卡片各画一条会出现多条线）。
     event.preventDefault();
   };
 
@@ -172,5 +173,121 @@ export function enableCardDrag(args: DragArgs): () => void {
     cardEl.removeEventListener("dragend", handleDragEnd);
     ownerDocument.removeEventListener("pointerup", resetIfNotDragging);
     ownerDocument.removeEventListener("pointercancel", resetIfNotDragging);
+  };
+}
+
+/** 指示线的位置，坐标相对网格左上角 */
+export interface IndicatorPlacement {
+  left: number;
+  top: number;
+  height: number;
+}
+
+/** 落点是否真的压在某张卡片上。用坐标判断而不是 event.target，省掉一次 DOM 回溯与类型收窄 */
+export function isInsideAnyCard(rects: Rect[], x: number, y: number): boolean {
+  return rects.some((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
+}
+
+/**
+ * 算出插入指示线该画在哪。
+ *
+ * `index` 取 `computeDropIndex` 的**原始**结果（0..rects.length，等于 length 表示插到末尾），
+ * 不要用 `handleDrop` 里 `target > from` 减 1 之后的值：那个 -1 是"移除源卡片后数组会重新
+ * 编号"的补偿，与视觉插入位置无关，用它画线会让线偏移一个卡位。
+ *
+ * 线画在目标卡片的左边界上；插到末尾时画在最后一张卡片的右边界。
+ */
+export function indicatorPlacement(
+  rects: Rect[],
+  index: number,
+  origin: { left: number; top: number },
+): IndicatorPlacement | null {
+  if (rects.length === 0) {
+    return null;
+  }
+  const clamped = Math.min(Math.max(index, 0), rects.length);
+  const atEnd = clamped === rects.length;
+  const rect = atEnd ? rects[rects.length - 1]! : rects[clamped]!;
+  return {
+    left: (atEnd ? rect.right : rect.left) - origin.left,
+    top: rect.top - origin.top,
+    height: rect.bottom - rect.top,
+  };
+}
+
+/**
+ * 给网格接上拖拽落点指示线，返回还原函数。
+ *
+ * 挂在网格上而不是每张卡片上：dragover 会从卡片冒泡到网格，一个监听就够，而按卡片挂会让
+ * 每张卡片各自画一条线。指示线本身是网格的绝对定位子元素（`.home-tab-cards` 已经是
+ * `position: relative`），且不带 `home-card` 类——`cardRects` 与瀑布流都按那个类筛选子元素，
+ * 所以它不会被当成一张卡片参与测量或布局。
+ */
+export function enableDropIndicator(gridEl: HTMLElement): () => void {
+  let line: HTMLElement | null = null;
+
+  const hide = (): void => {
+    line?.remove();
+    line = null;
+  };
+
+  const show = (placement: IndicatorPlacement): void => {
+    line ??= gridEl.createDiv({ cls: "home-card-drop-indicator" });
+    line.style.left = `${placement.left}px`;
+    line.style.top = `${placement.top}px`;
+    line.style.height = `${placement.height}px`;
+  };
+
+  const handleDragOver = (event: DragEvent): void => {
+    if (!isCardDrag(event)) {
+      hide();
+      return;
+    }
+    const rects = cardRects(gridEl);
+    const x = event.clientX;
+    const y = event.clientY;
+    // 只在压住卡片时给线：卡片之间的空隙没有 preventDefault，那里其实放不下，
+    // 画了线反而是在骗用户。瀑布流之后列底参差，空隙变多，这点尤其要紧。
+    if (!isInsideAnyCard(rects, x, y)) {
+      hide();
+      return;
+    }
+    const origin = gridEl.getBoundingClientRect();
+    const placement = indicatorPlacement(rects, computeDropIndex(rects, x, y), origin);
+    if (placement) {
+      show(placement);
+    } else {
+      hide();
+    }
+  };
+
+  /**
+   * 指针移出网格后 dragover 不再触发，最后的状态会留在屏幕上，所以要自己收尾。
+   * 用坐标判断是否真的离开了网格，而不是看 relatedTarget：在子元素之间移动也会触发
+   * dragleave，看 relatedTarget 需要额外的包含判断，而坐标判断天然没有这个问题。
+   */
+  const handleDragLeave = (event: DragEvent): void => {
+    const rect = gridEl.getBoundingClientRect();
+    const x = event.clientX;
+    const y = event.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      hide();
+    }
+  };
+
+  // drop 与 dragend 都要收：dragend 并不可靠——onDrop → moveCard → refreshHome 会在拖拽
+  // 结束前就把源卡片销毁掉，它身上的 dragend 可能根本不触发。那条路径上整个网格会被
+  // root.empty() 丢掉，指示线跟着消失；而 drop 落在原位（不触发 onDrop）时就靠这里的 drop。
+  gridEl.addEventListener("dragover", handleDragOver);
+  gridEl.addEventListener("dragleave", handleDragLeave);
+  gridEl.addEventListener("drop", hide);
+  gridEl.addEventListener("dragend", hide);
+
+  return () => {
+    gridEl.removeEventListener("dragover", handleDragOver);
+    gridEl.removeEventListener("dragleave", handleDragLeave);
+    gridEl.removeEventListener("drop", hide);
+    gridEl.removeEventListener("dragend", hide);
+    hide();
   };
 }

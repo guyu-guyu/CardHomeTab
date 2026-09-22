@@ -1,6 +1,7 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { renderBackground } from "./background";
 import { CardView } from "./card";
+import { enableDropIndicator } from "./card-grid";
 import { contentStyleFeatures } from "./content-styles";
 import { enableMasonry } from "./masonry";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
@@ -19,6 +20,7 @@ export class HomeView extends ItemView {
   private cardViews: CardView[] = [];
   private disposeSearch: (() => void) | null = null;
   private disposeMasonry: (() => void) | null = null;
+  private disposeIndicator: (() => void) | null = null;
   private renderToken = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: CardHomeTabPlugin) {
@@ -52,6 +54,8 @@ export class HomeView extends ItemView {
     this.disposeSearch = null;
     this.disposeMasonry?.();
     this.disposeMasonry = null;
+    this.disposeIndicator?.();
+    this.disposeIndicator = null;
     this.rootEl = null;
     this.contentEl.empty();
   }
@@ -69,6 +73,8 @@ export class HomeView extends ItemView {
     // 不断开就会在已脱离文档的节点上继续回调。
     this.disposeMasonry?.();
     this.disposeMasonry = null;
+    this.disposeIndicator?.();
+    this.disposeIndicator = null;
     root.empty();
     // 内容样式的开闸类。必须用幂等的 toggleClass 而不是 addClass：rootEl 在 onOpen()
     // 建一次、render() 只清空它的内容，它本身跨次渲染存活，addClass 会让关掉开关后仍残留。
@@ -124,6 +130,9 @@ export class HomeView extends ItemView {
     }
     const grid = stage.createDiv({ cls: "home-tab-cards" });
     grid.style.gridTemplateColumns = `repeat(${this.plugin.settings.gridColumns}, minmax(0, 1fr))`;
+    // 指示线按需查卡片，所以在建卡片之前接上即可；先赋值也保证后面任何一次提前返回
+    // 都不会漏掉这条监听的清理。
+    this.disposeIndicator = enableDropIndicator(grid);
 
     for (const section of sections) {
       if (token !== this.renderToken) {

@@ -132,7 +132,7 @@ Hover a card to reveal its action bar:
 
 | Action | Behaviour |
 | --- | --- |
-| Drag handle | Moves the section in the dashboard note |
+| Drag handle | Moves the section in the dashboard note. While dragging, a line marks where the card will be inserted |
 | Card settings | Dialog for icon, CSS snippets (built-in and user, multi-select) and column span; writes back to the `%%card:%%` line and re-renders that card |
 | Edit | Opens the dashboard note with the cursor on that card's heading |
 | Delete | Removes the section, after a confirmation |

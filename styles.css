@@ -119,6 +119,20 @@
   opacity: 0.45;
 }
 
+/* 拖拽落点指示线。由 card-grid.ts 在拖拽期间插入网格，位置用内联 left/top/height 给。
+   translateX(-50%) 让线居中压在目标卡片的边界上，而不是偏在卡片里侧。
+   pointer-events: none 是必须的：它盖在卡片上方，若能接事件会把 dragover 挡掉，
+   指示线自己就成了拖拽的黑洞。 */
+.home-card-drop-indicator {
+  position: absolute;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-s);
+  background-color: var(--interactive-accent);
+  pointer-events: none;
+  z-index: 3;
+}
+
 .home-tab-stage {
   position: relative;
   display: flex;
