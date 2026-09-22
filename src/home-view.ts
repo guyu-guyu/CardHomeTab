@@ -1,5 +1,4 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
-import { resolveSnippetRefs } from "./auto-snippets";
 import { renderBackground } from "./background";
 import { CardView } from "./card";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
@@ -8,6 +7,7 @@ import type CardHomeTabPlugin from "./main";
 import { renderHeader } from "./page-header";
 import { buildCandidates, readBookmarkPaths, renderSearchBar } from "./search-bar";
 import { scopedStylesheet } from "./snippet-scope";
+import { resolveSnippetRefs } from "./snippets";
 
 export const HOME_VIEW_TYPE = "card-home-tab-view";
 
@@ -135,7 +135,7 @@ export class HomeView extends ItemView {
       this.cardViews.push(card);
       grid.appendChild(card.el);
 
-      const parts = await this.plugin.snippets.resolveAll(resolveSnippetRefs(section.meta, body));
+      const parts = await this.plugin.snippets.resolveAll(resolveSnippetRefs(section.meta.css));
       if (token !== this.renderToken) {
         return;
       }

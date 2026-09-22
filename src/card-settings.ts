@@ -1,7 +1,7 @@
 import { Modal, getIconIds, setIcon, type App } from "obsidian";
-import { AUTO_CSS, isAutoCss, type CardMeta } from "./dashboard/metadata";
+import type { CardMeta } from "./dashboard/metadata";
 import type { CardSection } from "./dashboard/parse";
-import type { SnippetRegistry } from "./snippets";
+import { parseSnippetRef, type SnippetRegistry } from "./snippets";
 
 export interface CardSettingsArgs {
   app: App;
@@ -14,9 +14,7 @@ export interface CardSettingsArgs {
  * 用 `Modal` 而不是锚定 popover：锚定浮层要自己处理定位、外部点击关闭、层级与滚动跟随，
  * 而 `Modal` 自带焦点陷阱与 Esc 关闭——设置项不多，没必要自己实现这一套。
  *
- * 「自动」是一个独立复选框，不是手动选择的替代品：Task 5 之后 `css=auto` 在列表里
- * **任何位置**都会展开，`%%card: css=auto,user:mine%%` 的语义是「自动 + 我的片段」。
- * 所以勾选它只是往 `css` 列表里加一项，不能清空用户已勾的片段（那会静默丢数据）。
+ * 片段只剩「用户片段」一种来源，所以这里就是一组复选框，没有别的来源或「自动」模式。
  */
 export class CardSettingsModal extends Modal {
   private readonly args: CardSettingsArgs;
@@ -25,7 +23,6 @@ export class CardSettingsModal extends Modal {
   private iconValue: string;
   private spanValue: number;
   private iconPreview: HTMLElement | null = null;
-  private autoBox: HTMLInputElement | null = null;
 
   constructor(args: CardSettingsArgs) {
     super(args.app);
@@ -36,13 +33,15 @@ export class CardSettingsModal extends Modal {
       icon: args.section.meta.icon,
       entries: args.section.meta.entries.map((entry) => ({ ...entry })),
     };
-    // 只挑出非 auto 的引用作为复选框状态；列表里没有的引用（例如手写的、或片段文件
-    // 已被删除的）会一直留在 selectedSnippets 里，应用时原样回写，不会被这里吞掉。
-    // 手写 `%%card: css=base%%` 里的裸片段名合法（resolveSnippetRefs 会当成 builtin:），
-    // 但列表里的 ref 写作 `builtin:base`，不归一化的话复选框会是未勾选、与文件对不上。
+    // 列表里没有的引用（手写的、或片段文件已被删除的）会一直留在 selectedSnippets 里，
+    // 应用时原样回写，不会被这里吞掉。
+    // 必须归一化成 `user:` 形式：手写的裸名 `mine` 与列表里的 `user:mine` 是同一个片段，
+    // 不归一化的话复选框会显示未勾选、与文件里的实际配置对不上。
+    // 解析不出来的引用（空串、`builtin:x`、别的前缀）在此丢弃——它们已经不指向任何东西。
     this.selectedSnippets = this.draft.css
-      .filter((ref) => ref !== AUTO_CSS)
-      .map((ref) => (ref.includes(":") ? ref : `builtin:${ref}`));
+      .map((ref) => parseSnippetRef(ref))
+      .filter((name): name is string => name !== null)
+      .map((name) => `user:${name}`);
     this.iconValue = this.draft.icon;
     this.spanValue = this.draft.span;
   }
@@ -105,12 +104,6 @@ export class CardSettingsModal extends Modal {
     const row = parent.createDiv({ cls: "home-tab-setting-row is-column" });
     row.createDiv({ cls: "home-tab-setting-label", text: "CSS 片段" });
 
-    const autoLabel = row.createEl("label", { cls: "home-tab-checkbox" });
-    const autoBox = autoLabel.createEl("input", { attr: { type: "checkbox" } });
-    this.autoBox = autoBox;
-    autoBox.checked = isAutoCss(this.args.section.meta);
-    autoLabel.createSpan({ text: "自动（按卡片里的内容类型套用内置片段）" });
-
     row.createDiv({ cls: "home-tab-snippet-list" });
     this.renderSnippetList();
   }
@@ -121,15 +114,21 @@ export class CardSettingsModal extends Modal {
       return;
     }
     list.empty();
-    for (const info of this.args.snippets.list()) {
+    const available = this.args.snippets.list();
+    if (available.length === 0) {
+      // 内置片段移除后这个列表可能整段为空，不给一句话交代的话弹窗里是一片空白，像是坏了
+      list.createDiv({
+        cls: "home-tab-snippet-empty",
+        text: `还没有自定义片段。把 .css 文件放进 ${this.args.snippets.directory} 即可。`,
+      });
+      return;
+    }
+    for (const info of available) {
       const label = list.createEl("label", { cls: "home-tab-checkbox" });
       const box = label.createEl("input", { attr: { type: "checkbox" } });
       box.checked = this.selectedSnippets.includes(info.ref);
-      const text = info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}`;
-      label.createSpan({ text });
-      if (info.path) {
-        label.createSpan({ cls: "home-tab-snippet-path", text: info.path });
-      }
+      label.createSpan({ text: info.name });
+      label.createSpan({ cls: "home-tab-snippet-path", text: info.path });
       box.addEventListener("change", () => {
         if (box.checked) {
           if (!this.selectedSnippets.includes(info.ref)) {
@@ -162,8 +161,7 @@ export class CardSettingsModal extends Modal {
     cancel.addEventListener("click", () => this.close());
     const apply = footer.createEl("button", { text: "应用", cls: "mod-cta" });
     apply.addEventListener("click", () => {
-      const auto = this.autoBox?.checked ?? false;
-      this.draft.css = auto ? [AUTO_CSS, ...this.selectedSnippets] : [...this.selectedSnippets];
+      this.draft.css = [...this.selectedSnippets];
       this.draft.span = this.spanValue;
       this.draft.icon = this.iconValue;
       this.args.onApply(this.draft);

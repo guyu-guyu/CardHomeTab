@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CARD_META,
   hasLossyTokens,
-  isAutoCss,
   isDefaultMeta,
   parseCardMeta,
   serializeCardMeta,
@@ -80,8 +79,8 @@ describe("serializeCardMeta", () => {
 
   it("round-trips through parse", () => {
     const cases = [
-      "%%card: css=auto%%",
-      "%%card: css=base,text; span=3; icon=lucide-chart; foo=bar%%",
+      "%%card: css=mine%%",
+      "%%card: css=user:mine,other; span=3; icon=lucide-chart; foo=bar%%",
       "%%card: span=2%%",
       "%%card: icon=lucide-icon%%",
     ];
@@ -93,14 +92,7 @@ describe("serializeCardMeta", () => {
   });
 });
 
-describe("isAutoCss / isDefaultMeta", () => {
-  it("detects the auto marker wherever it appears", () => {
-    expect(isAutoCss(parseCardMeta("%%card: css=auto%%")!)).toBe(true);
-    expect(isAutoCss(parseCardMeta("%%card: css=auto,text%%")!)).toBe(true);
-    expect(isAutoCss(parseCardMeta("%%card: css=text,auto%%")!)).toBe(true);
-    expect(isAutoCss(DEFAULT_CARD_META)).toBe(false);
-  });
-
+describe("isDefaultMeta", () => {
   it("detects fully default meta", () => {
     expect(isDefaultMeta(DEFAULT_CARD_META)).toBe(true);
     expect(isDefaultMeta(parseCardMeta("%%card: span=2%%")!)).toBe(false);

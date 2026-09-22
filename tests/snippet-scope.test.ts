@@ -89,7 +89,7 @@ describe("scopedStylesheet", () => {
   it("scopes every part to the same card", () => {
     const result = scopedStylesheet(
       [
-        { ref: "builtin:text", css: ".t { margin: 0; }" },
+        { ref: "user:text", css: ".t { margin: 0; }" },
         { ref: "user:mine", css: ".m { color: red; }" },
       ],
       "card-2",
@@ -99,8 +99,8 @@ describe("scopedStylesheet", () => {
   });
 
   it("labels each part so the origin is traceable in devtools", () => {
-    expect(scopedStylesheet([{ ref: "builtin:base", css: ".b{}" }], "card-2")).toContain(
-      "builtin:base",
+    expect(scopedStylesheet([{ ref: "user:base", css: ".b{}" }], "card-2")).toContain(
+      "user:base",
     );
   });
 
@@ -119,12 +119,12 @@ describe("scopedStylesheet", () => {
   it("skips parts that resolve to an empty snippet", () => {
     const result = scopedStylesheet(
       [
-        { ref: "builtin:text", css: "" },
+        { ref: "user:text", css: "" },
         { ref: "user:mine", css: ".m{}" },
       ],
       "card-2",
     );
-    expect(result).not.toContain("builtin:text");
+    expect(result).not.toContain("user:text");
     expect(result).toContain(".m{}");
   });
 

@@ -10,8 +10,6 @@ export interface CardMeta {
   entries: CardMetaEntry[];
 }
 
-export const AUTO_CSS = "auto";
-
 export const DEFAULT_CARD_META: CardMeta = {
   css: [],
   span: 1,
@@ -76,10 +74,6 @@ export function serializeCardMeta(meta: CardMeta): string {
     return "";
   }
   return `%%card: ${parts.join("; ")}%%`;
-}
-
-export function isAutoCss(meta: CardMeta): boolean {
-  return meta.css.includes(AUTO_CSS);
 }
 
 export function isDefaultMeta(meta: CardMeta): boolean {

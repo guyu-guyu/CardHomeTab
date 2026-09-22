@@ -366,13 +366,19 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         return;
       }
       list.empty();
-      for (const info of this.plugin.snippets.list()) {
-        const row = list.createDiv({ cls: "home-tab-snippet-settings-row" });
-        row.createSpan({
-          cls: "home-tab-snippet-settings-name",
-          text: info.source === "builtin" ? `内置：${info.name}` : `用户：${info.name}`,
+      const available = this.plugin.snippets.list();
+      if (available.length === 0) {
+        // 内置片段移除后这个列表可能整段为空，不给一句话交代的话「片段」标题下是一片空白
+        list.createDiv({
+          cls: "home-tab-snippet-empty",
+          text: "还没有自定义片段。把 .css 文件放进下面这个目录即可。",
         });
-        row.createSpan({ cls: "home-tab-snippet-path", text: info.path ?? "随插件发布" });
+        return;
+      }
+      for (const info of available) {
+        const row = list.createDiv({ cls: "home-tab-snippet-settings-row" });
+        row.createSpan({ cls: "home-tab-snippet-settings-name", text: info.name });
+        row.createSpan({ cls: "home-tab-snippet-path", text: info.path });
       }
     });
 

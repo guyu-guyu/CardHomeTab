@@ -1,46 +1,57 @@
 import type { App } from "obsidian";
-import baseCss from "./builtin-snippets/base.css";
-import codeCss from "./builtin-snippets/code.css";
-import dataviewCss from "./builtin-snippets/dataview.css";
-import queryCss from "./builtin-snippets/query.css";
-import textCss from "./builtin-snippets/text.css";
 
 export interface SnippetInfo {
   ref: string;
   name: string;
-  source: "builtin" | "user";
-  path: string | null;
+  /** 用户片段总有对应文件，所以不再可能为 null（内置片段已移除） */
+  path: string;
 }
 
-export const BUILTIN_SNIPPETS: Record<string, string> = {
-  base: baseCss,
-  code: codeCss,
-  dataview: dataviewCss,
-  query: queryCss,
-  text: textCss,
-};
-
-export function parseSnippetRef(ref: string): { source: "builtin" | "user"; name: string } | null {
+/**
+ * 把一条片段引用解析成用户片段的名字，解析不出来返回 null。
+ *
+ * 片段只剩「用户片段」一种来源，所以**裸名就是用户片段**：`mine` 等价于 `user:mine`。
+ * `user:` 前缀继续接受（旧笔记与设置弹窗写出来的都是这个形式）。`builtin:` 已随内置
+ * 片段一起废除，和其他任何前缀一样按无效处理——存量 `css=builtin:text` 于是静默失效，
+ * 这是有意的：那种引用如今指向不存在的东西，留着只会是个永不生效又看不见的配置。
+ */
+export function parseSnippetRef(ref: string): string | null {
   const trimmed = ref.trim();
   if (trimmed.length === 0) {
     return null;
   }
   const separator = trimmed.indexOf(":");
   if (separator < 0) {
-    return { source: "builtin", name: trimmed };
+    return trimmed;
   }
-  const source = trimmed.slice(0, separator).trim();
-  const name = trimmed.slice(separator + 1).trim();
-  if (name.length === 0) {
+  if (trimmed.slice(0, separator).trim() !== "user") {
     return null;
   }
-  if (source === "builtin") {
-    return { source: "builtin", name };
+  const name = trimmed.slice(separator + 1).trim();
+  return name.length > 0 ? name : null;
+}
+
+/**
+ * 把 `%%card:` 里的 `css` 列表归一化成去重后的 `user:` 引用，保持首次出现的顺序。
+ *
+ * 归一化这一步不能省：同一个片段可以写成 `mine` 或 `user:mine`，不归一化就会被当成两条
+ * 引用、同一份 CSS 挂两遍。无效项（空串、`builtin:x`、别的前缀）在这里静默丢弃。
+ */
+export function resolveSnippetRefs(css: readonly string[]): string[] {
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of css) {
+    const name = parseSnippetRef(entry);
+    if (name === null) {
+      continue;
+    }
+    const ref = `user:${name}`;
+    if (!seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
   }
-  if (source === "user") {
-    return { source: "user", name };
-  }
-  return null;
+  return refs;
 }
 
 interface CacheEntry {
@@ -67,22 +78,17 @@ export class SnippetRegistry {
   }
 
   list(): SnippetInfo[] {
-    const builtin: SnippetInfo[] = Object.keys(BUILTIN_SNIPPETS)
-      .sort()
-      .map((name) => ({ ref: `builtin:${name}`, name, source: "builtin" as const, path: null }));
     // 与 read() 用同一道守卫：read() 会拒绝含分隔符或 `..` 的名字，若 list() 照单全收，
     // `my..card` 这类文件就会出现在设置页与卡片弹窗里，选中后静默失效。
-    const user: SnippetInfo[] = (this.userNames ?? [])
+    // filter 已经返回新数组，不必再 slice 一次就能安全 sort。
+    return (this.userNames ?? [])
       .filter(isSafeSnippetName)
-      .slice()
       .sort()
       .map((name) => ({
         ref: `user:${name}`,
         name,
-        source: "user" as const,
         path: `${this.directory}/${name}.css`,
       }));
-    return [...builtin, ...user];
   }
 
   invalidate(): void {
@@ -105,19 +111,11 @@ export class SnippetRegistry {
   }
 
   async read(ref: string): Promise<string | null> {
-    const parsed = parseSnippetRef(ref);
-    if (!parsed) {
+    const name = parseSnippetRef(ref);
+    if (name === null || !isSafeSnippetName(name)) {
       return null;
     }
-    if (parsed.source === "builtin") {
-      return Object.hasOwn(BUILTIN_SNIPPETS, parsed.name)
-        ? (BUILTIN_SNIPPETS[parsed.name] ?? null)
-        : null;
-    }
-    if (!isSafeSnippetName(parsed.name)) {
-      return null;
-    }
-    const path = `${this.directory}/${parsed.name}.css`;
+    const path = `${this.directory}/${name}.css`;
     try {
       const stat = await this.app.vault.adapter.stat(path);
       const mtime = stat?.mtime ?? 0;

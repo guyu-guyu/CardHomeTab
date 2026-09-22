@@ -39,9 +39,6 @@ const context = await esbuild.context({
     "@lezer/lr",
   ],
   format: "cjs",
-  loader: {
-    ".css": "text",
-  },
   logLevel: "info",
   outfile: path.join(outputDirectory, "main.js"),
   platform: "browser",
