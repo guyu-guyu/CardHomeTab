@@ -9,6 +9,7 @@ import {
   type TFile,
 } from "obsidian";
 import { errorMessage } from "./errors";
+import { CONTENT_STYLE_GROUPS } from "./content-styles";
 import type CardHomeTabPlugin from "./main";
 
 /**
@@ -353,6 +354,30 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
           save();
         }),
     );
+
+    new Setting(containerEl).setName("内容样式").setHeading();
+
+    // 按内容类型分折叠块渲染，块与开关都来自 CONTENT_STYLE_GROUPS：新增特性只需改注册表。
+    // 用原生 <details>/<summary> 而不是自己做折叠：不必维护展开状态，也自带键盘可达性。
+    for (const group of CONTENT_STYLE_GROUPS) {
+      const block = containerEl.createEl("details", { cls: "home-tab-style-group" });
+      const summary = block.createEl("summary", { cls: "home-tab-style-group-summary" });
+      summary.createSpan({ cls: "home-tab-style-group-name", text: group.name });
+      summary.createSpan({ cls: "home-tab-style-group-desc", text: group.description });
+
+      for (const feature of group.features) {
+        const key = feature.key;
+        new Setting(block)
+          .setName(feature.name)
+          .setDesc(feature.description)
+          .addToggle((toggle) =>
+            toggle.setValue(settings[key]).onChange((value) => {
+              settings[key] = value;
+              save();
+            }),
+          );
+      }
+    }
 
     new Setting(containerEl).setName("片段").setHeading();
 

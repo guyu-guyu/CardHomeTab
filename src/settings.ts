@@ -1,9 +1,16 @@
+import {
+  CONTENT_STYLE_GROUPS,
+  type ContentStyleKey,
+  type ContentStyleSettings,
+} from "./content-styles";
+
 export interface RecentFile {
   path: string;
   timestamp: number;
 }
 
-export interface CardHomeTabSettings {
+/** 继承 ContentStyleSettings：注册表里加了特性而这里忘了给默认值，会在编译期报错 */
+export interface CardHomeTabSettings extends ContentStyleSettings {
   version: number;
   dashboardFile: string;
   cardHeadingLevel: number;
@@ -62,6 +69,10 @@ export const DEFAULT_SETTINGS: CardHomeTabSettings = {
   showRecentFiles: true,
   maxRecentFiles: 5,
   gridColumns: 3,
+  // 内容样式一律默认关闭：它们改变的是用户笔记的观感，不该在升级后凭空生效
+  tableZebra: false,
+  baseBar: false,
+  baseHideToolbar: false,
   recentFiles: [],
 };
 
@@ -145,6 +156,23 @@ function parseRecentFiles(value: unknown): RecentFile[] {
   return result;
 }
 
+/**
+ * 读取内容样式那一段。遍历注册表而不是逐字段手写，所以注册表里加一条就自动被读取，
+ * 不会出现「设置界面有开关、但 mergeSettings 忘了读、重启后失效」这种不对称。
+ *
+ * `{} as` 这个断言是安全的：下面的循环覆盖了 ContentStyleKey 的每一个键。
+ */
+function mergeContentStyles(record: RawRecord): ContentStyleSettings {
+  const result = {} as ContentStyleSettings;
+  for (const group of CONTENT_STYLE_GROUPS) {
+    for (const feature of group.features) {
+      const key: ContentStyleKey = feature.key;
+      result[key] = pickBoolean(record, key, DEFAULT_SETTINGS[key]);
+    }
+  }
+  return result;
+}
+
 export function mergeSettings(raw: unknown): CardHomeTabSettings {
   const record = asRecord(raw);
   if (!record) {
@@ -194,6 +222,7 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
     showRecentFiles: pickBoolean(record, "showRecentFiles", DEFAULT_SETTINGS.showRecentFiles),
     maxRecentFiles: pickNumber(record, "maxRecentFiles", DEFAULT_SETTINGS.maxRecentFiles, 0, 20),
     gridColumns: pickNumber(record, "gridColumns", DEFAULT_SETTINGS.gridColumns, 1, 6),
+    ...mergeContentStyles(record),
     recentFiles: parseRecentFiles(record["recentFiles"]),
   };
 }

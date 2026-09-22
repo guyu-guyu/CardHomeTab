@@ -1,6 +1,7 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { renderBackground } from "./background";
 import { CardView } from "./card";
+import { contentStyleFeatures } from "./content-styles";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import type CardHomeTabPlugin from "./main";
@@ -61,6 +62,13 @@ export class HomeView extends ItemView {
     this.disposeSearch?.();
     this.disposeSearch = null;
     root.empty();
+    // 内容样式的开闸类。必须用幂等的 toggleClass 而不是 addClass：rootEl 在 onOpen()
+    // 建一次、render() 只清空它的内容，它本身跨次渲染存活，addClass 会让关掉开关后仍残留。
+    // 遍历注册表而不是逐个手写，注册表里加一条特性这里就自动生效。
+    // 放在早退分支之前，保证"文件缺失"时类的状态也是对的。
+    for (const feature of contentStyleFeatures()) {
+      root.toggleClass(feature.className, this.plugin.settings[feature.key]);
+    }
     if (!this.plugin.store.exists()) {
       this.renderMissingFile(root);
       return;

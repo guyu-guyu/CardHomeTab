@@ -276,3 +276,143 @@
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
+
+/* 设置页「内容样式」下按内容类型分的折叠块（原生 details/summary） */
+.home-tab-style-group {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.home-tab-style-group-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3) 0;
+  cursor: var(--cursor);
+}
+
+.home-tab-style-group-name {
+  font-weight: var(--font-semibold);
+}
+
+.home-tab-style-group-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* 展开后的开关向右缩进，视觉上从属于所在的块；并去掉最后一项的分隔线，
+   避免与块自身的下边框叠成双线 */
+.home-tab-style-group > .setting-item {
+  padding-inline-start: var(--size-4-4);
+}
+
+.home-tab-style-group > .setting-item:last-child {
+  border-bottom: none;
+}
+
+.home-tab-setting-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-4);
+}
+
+/* 隐藏 base 顶部工具栏（设置页「内容样式 → 隐藏 Base 工具栏」）。
+ *
+ * `.bases-header` 里只有一个子元素 `.bases-toolbar`，视图选择、结果数、排序、筛选、属性
+ * 五个菜单都挂在它上面（见 app.js 里 viewHeaderEl 的构造），所以连 header 一起隐藏即可，
+ * 顺带去掉它自己的内边距。搜索行 `.bases-search-row` 是 header 的兄弟、只能从工具栏唤出，
+ * 不在此列。
+ *
+ * 两点安全性依据（都从 obsidian-1.13.7 的 app.js / app.css 实证，不是猜的）：
+ *   1. 不影响虚拟滚动：Bases 的虚拟列表从不读表头尺寸——viewHeaderEl 上既没有
+ *      offsetHeight / clientHeight，也没有 getBoundingClientRect。
+ *   2. 不会被 Obsidian 自己改回来：它确实会调 `viewHeaderEl.toggle()/.show()`，但
+ *      `show()` 的实现是「仅当**内联** display 为 none 时，才恢复成空串」。样式表规则
+ *      不产生内联样式，那个守卫不成立，所以这条规则不会被覆盖，也就不需要 !important。 */
+.home-tab-root.is-base-toolbar-hidden .home-card-content.markdown-rendered .bases-header {
+  display: none;
+}
+
+.home-tab-span-input {
+  width: 5em;
+}
+
+/* 全局内容类型样式：表格斑马条纹（设置页「内容样式 → 表格样式」）。
+   ① `.home-card-content` 与 `markdown-rendered` 加在同一个元素上，必须连写——写成
+      `.home-card-content .markdown-rendered` 会去找一个不存在的子元素，整条规则是死的
+      （内建 text.css 曾因此整份失效）。tests/styles.test.ts 守着这一点。
+   ② `table` 前不加 `>`：真实结构是 content > content-inner > table，且表格还可能嵌在
+      引用块或列表里，直接子选择器会漏掉它们。
+   ③ `:not(...)` 排除 base 与 dataview 自己渲染的表格：它们有各自的行结构与主题样式，
+      本设置项只管 Markdown 表格。
+   ④ 条纹色用 `--background-modifier-hover` 而不是 `--table-row-alt-background`：后者
+      Obsidian 默认是 transparent，不少主题还显式写成 `var(--table-background)`，用它
+      等于把开关做成"打开后什么都没发生"。另留 `--home-tab-table-zebra` 供用户覆盖。 */
+.home-tab-root.is-table-zebra
+  .home-card-content.markdown-rendered
+  table:not(.table-view-table):not(:is(.bases-view, .bases-table-container) table)
+  tbody
+  tr:nth-child(even) {
+  background-color: var(--home-tab-table-zebra, var(--background-modifier-hover));
+}
+
+/* 上面那条的特异度高于 Obsidian 自己的 tr:hover，不补这一条的话偶数行会失去悬停反馈 */
+.home-tab-root.is-table-zebra
+  .home-card-content.markdown-rendered
+  table:not(.table-view-table):not(:is(.bases-view, .bases-table-container) table)
+  tbody
+  tr:nth-child(even):hover {
+  background-color: var(--background-modifier-active-hover);
+}
+
+/* 全局内容类型样式：base 表格的每一行画成一块长条卡片（设置页「内容样式 → Base 样式」）。
+ *
+ * 这里**只做绘制**，绝不碰 `.bases-tr` / `.bases-td` 的 position、display、height、inset。
+ * 原因是 Bases 的表格视图是虚拟滚动：app.css 里 `.bases-tr` 与 `.bases-td` 都是
+ * `position: absolute`，它们的 left/top/width 由 JS 逐行算出来写在内联样式上。一旦改动
+ * 布局模型（比如想把标题和元信息叠成两行），就会与虚拟滚动的定位和高度计算打架，
+ * 结果是行重叠、空白或滚动错位。所以单元格仍旧横向并排在一行内，这是刻意的取舍。
+ * tests/styles.test.ts 守着这条不变量。
+ *
+ * 色块用 `::before` 画而不是直接给 `.bases-tr` 加 background + border：
+ *   - 加 border/padding 会改变绝对定位子元素（那些单元格）的包含块，把它们整体顶偏；
+ *   - 而 `::before` 用 `inset: 2px 0` 上下内缩，既做出条间距又完全不动行自身的盒子。
+ * `isolation: isolate` 让负 z-index 的伪元素停在本行内，不会掉到 tbody 背景后面去。 */
+.home-tab-root.is-base-bar
+  .home-card-content.markdown-rendered
+  .bases-tbody
+  .bases-tr:not(.bases-table-footer):not(.bases-table-group-summary-row) {
+  /* 行分隔线原本是 box-shadow 画的，长条卡片之间靠间距区分，不需要它 */
+  box-shadow: none;
+  isolation: isolate;
+}
+
+.home-tab-root.is-base-bar
+  .home-card-content.markdown-rendered
+  .bases-tbody
+  .bases-tr:not(.bases-table-footer):not(.bases-table-group-summary-row)::before {
+  content: "";
+  position: absolute;
+  inset: 2px 0;
+  border-radius: var(--radius-m);
+  background-color: var(--home-tab-base-bar, var(--background-modifier-hover));
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Bases 的行悬停是设在**行自身**的 background 上，而负 z-index 的伪元素会盖在元素自身
+   背景之上，不补这条的话长条卡片会把悬停反馈整个吃掉。 */
+.home-tab-root.is-base-bar
+  .home-card-content.markdown-rendered
+  .bases-tbody
+  .bases-tr:not(.bases-table-footer):not(.bases-table-group-summary-row):hover::before {
+  background-color: var(--background-modifier-active-hover);
+}
+
+/* 条内不该再有竖直的列分隔线 */
+.home-tab-root.is-base-bar
+  .home-card-content.markdown-rendered
+  .bases-tbody
+  .bases-td {
+  box-shadow: none;
+}
