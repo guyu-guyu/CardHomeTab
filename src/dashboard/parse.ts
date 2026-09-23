@@ -70,7 +70,7 @@ function frontmatterEnd(lines: Line[]): number {
 }
 
 function freshMeta(): CardMeta {
-  return { css: [], span: 1, icon: "", entries: [] };
+  return { css: [], span: 1, col: 0, icon: "", entries: [] };
 }
 
 export function parseDashboard(text: string, headingLevel: number): CardSection[] {

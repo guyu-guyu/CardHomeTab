@@ -61,18 +61,18 @@ describe("serializeCardMeta", () => {
 
   it("emits known keys in canonical order", () => {
     expect(
-      serializeCardMeta({ css: ["base", "text"], span: 2, icon: "lucide-chart", entries: [] }),
+      serializeCardMeta({ css: ["base", "text"], span: 2, col: 0, icon: "lucide-chart", entries: [] }),
     ).toBe("%%card: css=base,text; span=2; icon=lucide-chart%%");
   });
 
   it("appends unknown keys after known ones", () => {
     expect(
-      serializeCardMeta({ css: ["base"], span: 1, icon: "", entries: [{ key: "foo", value: "bar" }] }),
+      serializeCardMeta({ css: ["base"], span: 1, col: 0, icon: "", entries: [{ key: "foo", value: "bar" }] }),
     ).toBe("%%card: css=base; foo=bar%%");
   });
 
   it("omits span when it is the default", () => {
-    expect(serializeCardMeta({ css: [], span: 1, icon: "lucide-star", entries: [] })).toBe(
+    expect(serializeCardMeta({ css: [], span: 1, col: 0, icon: "lucide-star", entries: [] })).toBe(
       "%%card: icon=lucide-star%%",
     );
   });
@@ -92,7 +92,53 @@ describe("serializeCardMeta", () => {
   });
 });
 
+describe("col", () => {
+  it("parses an explicit column", () => {
+    expect(parseCardMeta("%%card: col=2%%")!.col).toBe(2);
+    expect(parseCardMeta("%%card: css=mine; span=2; col=3; icon=x%%")!.col).toBe(3);
+  });
+
+  it("defaults to 0, meaning unspecified", () => {
+    // 0 而不是 1：未指定要让布局层按轮转给位置，回落成 1 会把卡片硬钉在第一列
+    expect(parseCardMeta("%%card: span=2%%")!.col).toBe(0);
+    expect(DEFAULT_CARD_META.col).toBe(0);
+  });
+
+  it("falls back to unspecified for an illegal value", () => {
+    expect(parseCardMeta("%%card: col=abc%%")!.col).toBe(0);
+    expect(parseCardMeta("%%card: col=0%%")!.col).toBe(0);
+    expect(parseCardMeta("%%card: col=-2%%")!.col).toBe(0);
+    expect(parseCardMeta("%%card: col=%%")!.col).toBe(0);
+  });
+
+  it("is a first-class field and never lands in entries", () => {
+    // 走 entries 的话，第二次写入会留下 `col=1; col=2` 重复键，而 hasLossyTokens 把重复键
+    // 判为有损，于是这张卡的设置弹窗从此再也保存不进去
+    const meta = parseCardMeta("%%card: col=2%%")!;
+    expect(meta.entries).toEqual([]);
+    expect(serializeCardMeta({ ...meta, col: 3 })).toBe("%%card: col=3%%");
+    expect(hasLossyTokens(serializeCardMeta({ ...meta, col: 3 }))).toBe(false);
+  });
+
+  it("is omitted when unspecified", () => {
+    expect(serializeCardMeta({ css: [], span: 1, col: 0, icon: "", entries: [] })).toBe("");
+    expect(serializeCardMeta({ css: [], span: 2, col: 0, icon: "", entries: [] })).toBe(
+      "%%card: span=2%%",
+    );
+  });
+
+  it("round-trips through parse", () => {
+    for (const line of ["%%card: col=2%%", "%%card: span=2; col=3%%", "%%card: css=mine; col=1%%"]) {
+      expect(serializeCardMeta(parseCardMeta(line)!)).toBe(line);
+    }
+  });
+});
+
 describe("isDefaultMeta", () => {
+  it("treats an explicit column as non-default", () => {
+    expect(isDefaultMeta(parseCardMeta("%%card: col=2%%")!)).toBe(false);
+  });
+
   it("detects fully default meta", () => {
     expect(isDefaultMeta(DEFAULT_CARD_META)).toBe(true);
     expect(isDefaultMeta(parseCardMeta("%%card: span=2%%")!)).toBe(false);

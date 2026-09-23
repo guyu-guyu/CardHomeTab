@@ -6,6 +6,14 @@ export interface CardMetaEntry {
 export interface CardMeta {
   css: string[];
   span: number;
+  /**
+   * 卡片所在列（1-based）。`0` 表示未指定——此时由布局层按笔记顺序轮转回退。
+   *
+   * 必须是一等字段而不能走 `entries`：`entries` 是"原样保留未识别键"的口袋，同一个键
+   * 写第二次就会在行里留下 `col=1; col=2`，而 `hasLossyTokens` 把重复键判为有损，
+   * 于是这张卡的设置弹窗从此再也保存不进去。
+   */
+  col: number;
   icon: string;
   entries: CardMetaEntry[];
 }
@@ -13,6 +21,7 @@ export interface CardMeta {
 export const DEFAULT_CARD_META: CardMeta = {
   css: [],
   span: 1,
+  col: 0,
   icon: "",
   entries: [],
 };
@@ -24,7 +33,7 @@ export function parseCardMeta(line: string): CardMeta | null {
   if (!match) {
     return null;
   }
-  const meta: CardMeta = { css: [], span: 1, icon: "", entries: [] };
+  const meta: CardMeta = { css: [], span: 1, col: 0, icon: "", entries: [] };
   for (const rawPart of (match[1] ?? "").split(";")) {
     const part = rawPart.trim();
     if (part.length === 0) {
@@ -47,6 +56,11 @@ export function parseCardMeta(line: string): CardMeta | null {
     } else if (key === "span") {
       const parsed = Number.parseInt(value, 10);
       meta.span = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+    } else if (key === "col") {
+      // 非法值回落到 0（未指定）而不是 1：回落成 1 会把这张卡硬钉在第一列，
+      // 而"未指定"能让布局层按轮转给它一个合理的位置。
+      const parsed = Number.parseInt(value, 10);
+      meta.col = Number.isInteger(parsed) && parsed >= 1 ? parsed : 0;
     } else if (key === "icon") {
       meta.icon = value;
     } else {
@@ -64,6 +78,9 @@ export function serializeCardMeta(meta: CardMeta): string {
   if (meta.span > 1) {
     parts.push(`span=${meta.span}`);
   }
+  if (meta.col > 0) {
+    parts.push(`col=${meta.col}`);
+  }
   if (meta.icon.length > 0) {
     parts.push(`icon=${meta.icon}`);
   }
@@ -78,7 +95,11 @@ export function serializeCardMeta(meta: CardMeta): string {
 
 export function isDefaultMeta(meta: CardMeta): boolean {
   return (
-    meta.css.length === 0 && meta.span <= 1 && meta.icon.length === 0 && meta.entries.length === 0
+    meta.css.length === 0 &&
+    meta.span <= 1 &&
+    meta.col <= 0 &&
+    meta.icon.length === 0 &&
+    meta.entries.length === 0
   );
 }
 

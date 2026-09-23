@@ -27,25 +27,13 @@
   align-items: start;
 }
 
-/* 瀑布流由 masonry.ts 在接上 ResizeObserver 之后才加这个类。
+/* 列布局由 column-layout.ts 在接上 ResizeObserver 之后才加这个类。
    竖向间距改为靠"多占几个细行"来留，所以这里必须把 row-gap 归零，否则可用高度会变成
    K*unit + (K-1)*gap，粒度被 gap 撑得很粗、卡片底部会多出一大截。
    把归零放在这个类里而不是直接改 .home-tab-cards：老环境没有 ResizeObserver 时不加此类，
    退回普通 Grid 且卡片之间仍有间距，不会挤成一坨。 */
-.home-tab-cards.is-masonry {
+.home-tab-cards.is-column-layout {
   row-gap: 0;
-}
-
-@media (max-width: 900px) {
-  .home-tab-cards {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  /* 每张卡片内联写着 grid-column: span N，单列下它会撑出一个隐式列，"单列"就不是一列了。
-     这里把 span 压回 auto，让窄屏真的只有一列。 */
-  .home-card {
-    grid-column: auto !important;
-  }
 }
 
 .home-card {
@@ -119,14 +107,15 @@
   opacity: 0.45;
 }
 
-/* 拖拽落点指示线。由 card-grid.ts 在拖拽期间插入网格，位置用内联 left/top/height 给。
-   translateX(-50%) 让线居中压在目标卡片的边界上，而不是偏在卡片里侧。
+/* 拖拽落点指示线。由 card-grid.ts 在拖拽期间插入网格，位置用内联 left/top/width 给。
+   列布局下插入位置是「某列里某张卡片的上方或下方」，所以它是一条**横线**，跨目标列的宽度。
+   translateY(-50%) 让线居中压在目标卡片的边界上，而不是偏在卡片里侧。
    pointer-events: none 是必须的：它盖在卡片上方，若能接事件会把 dragover 挡掉，
    指示线自己就成了拖拽的黑洞。 */
 .home-card-drop-indicator {
   position: absolute;
-  width: 3px;
-  transform: translateX(-50%);
+  height: 3px;
+  transform: translateY(-50%);
   border-radius: var(--radius-s);
   background-color: var(--interactive-accent);
   pointer-events: none;

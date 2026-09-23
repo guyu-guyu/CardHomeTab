@@ -34,6 +34,47 @@ describe("styles.css", () => {
   });
 });
 
+describe("column layout contract", () => {
+  /**
+   * 竖向间距靠"多占行"来留，所以启用列布局时 row-gap 必须是 0；`rowSpan` 的换算正是按这个
+   * 前提写的。若有人把这条规则删掉或改成非 0，卡片底部会凭空多出一大截，运行时才看得见。
+   */
+  it("zeroes row-gap only when the column layout is on", () => {
+    expect(/\.home-tab-cards\.is-column-layout\s*\{[^}]*row-gap:\s*0/.test(stylesheet)).toBe(true);
+  });
+
+  /** 降级路径：没有 ResizeObserver 时不加 is-column-layout，普通 Grid 仍需保留卡片间距 */
+  it("keeps a gap on the plain grid for the no-ResizeObserver fallback", () => {
+    const plain = /\.home-tab-cards\s*\{([^}]*)\}/.exec(stylesheet);
+    expect(plain).not.toBeNull();
+    expect(plain?.[1]).toContain("gap:");
+  });
+
+  /**
+   * 列数由 JS 单点决定（`primeColumnLayout` 写内联 `grid-template-columns`）。CSS 里再写死一份
+   * 会在某个断点与内联值分叉；而在卡片渲染循环开始前就写内联值，正是"拖动后卡片先全宽再吸附"
+   * 那个闪烁的修复手段——CSS 里补一份既多余又会打架。
+   */
+  it("leaves the column count to JS instead of hardcoding it in CSS", () => {
+    const plain = /\.home-tab-cards\s*\{([^}]*)\}/.exec(stylesheet);
+    expect(plain?.[1]).not.toContain("grid-template-columns");
+    // 但 display: grid 必须留着：JS 只写模板与placement，不写 display
+    expect(plain?.[1]).toContain("display: grid");
+  });
+
+  /**
+   * 列数与每卡放置现在由 JS 单点决定并写成内联样式。样式表里任何带 `!important` 的
+   * `grid-column` / `grid-template-columns` 都会压过内联样式，让窄屏或宽卡片静默错位——
+   * 之前那条 `@media` 里的 `grid-column: auto !important` 就是为此被删的，别让它复辟。
+   */
+  it("never overrides the JS-written grid placement with !important", () => {
+    const pattern = /(grid-column|grid-template-columns)\s*:[^;}]*!important/;
+    expect(pattern.test(stylesheet), "stylesheet must not !important the grid placement").toBe(
+      false,
+    );
+  });
+});
+
 /**
  * 取出所有"选择器命中了 Bases 虚拟列表元素"的规则块。
  *

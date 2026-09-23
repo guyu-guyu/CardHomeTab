@@ -4,11 +4,12 @@ import { ConfirmModal } from "./confirm";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
-  moveCard as moveCardInText,
+  applyColumnDrop,
   removeCard as removeCardInText,
   updateCardMeta as updateCardMetaInText,
 } from "./dashboard/edit";
 import { DEFAULT_CARD_META, hasLossyTokens, type CardMeta } from "./dashboard/metadata";
+import type { DropTarget } from "./card-grid";
 import { isSameSection, parseDashboard, type CardSection } from "./dashboard/parse";
 import { errorMessage } from "./errors";
 import { HOME_VIEW_TYPE, HomeView } from "./home-view";
@@ -24,6 +25,8 @@ export default class CardHomeTabPlugin extends Plugin {
 
   private selfWriting = false;
   private selfWriteTimer: number | null = null;
+  private refreshTimer: number | null = null;
+  private refreshFullPage = false;
   private unloaded = false;
   private replacingLeaf: WorkspaceLeaf | null = null;
 
@@ -40,6 +43,9 @@ export default class CardHomeTabPlugin extends Plugin {
       if (this.selfWriteTimer !== null) {
         window.clearTimeout(this.selfWriteTimer);
       }
+      if (this.refreshTimer !== null) {
+        window.clearTimeout(this.refreshTimer);
+      }
     });
 
     this.addCommand({
@@ -54,7 +60,7 @@ export default class CardHomeTabPlugin extends Plugin {
       id: "refresh-cards",
       name: "刷新所有卡片",
       callback: () => {
-        this.refreshHome();
+        this.refreshHomeCards();
       },
     });
 
@@ -85,13 +91,13 @@ export default class CardHomeTabPlugin extends Plugin {
         if (this.selfWriting || file.path !== this.store.path) {
           return;
         }
-        this.refreshHome();
+        this.refreshHomeCards();
       }),
     );
 
     this.registerEvent(
       this.app.workspace.on("css-change", () => {
-        this.refreshHome();
+        this.refreshHomeCards();
       }),
     );
 
@@ -155,12 +161,49 @@ export default class CardHomeTabPlugin extends Plugin {
     }
   }
 
+  /** 整页刷新：设置变更、popout 往返。会重建背景、logo 与搜索框。 */
   refreshHome(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) {
-      if (leaf.view instanceof HomeView) {
-        void leaf.view.render();
-      }
+    this.scheduleRefresh(true);
+  }
+
+  /**
+   * 只重建卡片网格：笔记与片段变更走这条。背景、logo、搜索框原地不动，
+   * 因此拖动卡片之后整页不再闪一下。
+   */
+  refreshHomeCards(): void {
+    this.scheduleRefresh(false);
+  }
+
+  /**
+   * 把同一 tick 内的多次刷新合并成一次。
+   *
+   * 只用一个计时器 + 一个"整页优先"标志，不要开两个：两个 pending 同时存在时先后顺序不定，
+   * 整页那次可能落在后面，把刚做完的卡片刷新整个重做一遍。
+   *
+   * 用 `window.setTimeout(0)` 而不是 `requestAnimationFrame`：后台窗口与隐藏标签页不发帧，
+   * 刷新会被无限期推迟。也不用微任务——`modify` 与 `css-change` 分属不同宏任务，合不到一起。
+   *
+   * 如实记账：这**去不掉**「`moveCardTo` 结尾的显式刷新」与「vault `modify` 事件」这一对。
+   * `markSelfWriting` 的 350ms 抑制窗口若真失效，两者不在同一 tick，合并救不了。它实际能
+   * 去重的是 `css-change` 与 `modify` 撞车、多个首页叶子、以及设置页连续保存。
+   */
+  private scheduleRefresh(fullPage: boolean): void {
+    if (fullPage) {
+      this.refreshFullPage = true;
     }
+    if (this.refreshTimer !== null) {
+      return;
+    }
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      const full = this.refreshFullPage;
+      this.refreshFullPage = false;
+      for (const leaf of this.app.workspace.getLeavesOfType(HOME_VIEW_TYPE)) {
+        if (leaf.view instanceof HomeView) {
+          void (full ? leaf.view.render() : leaf.view.refreshCards());
+        }
+      }
+    }, 0);
   }
 
   async markSelfWriting<T>(action: () => Promise<T>): Promise<T> {
@@ -194,7 +237,7 @@ export default class CardHomeTabPlugin extends Plugin {
     if (!written) {
       return;
     }
-    this.refreshHome();
+    this.refreshHomeCards();
   }
 
   /** 删除是破坏性操作，入口却只是悬停卡片时才出现的图标按钮：先弹一次确认，写盘发生在用户
@@ -239,28 +282,48 @@ export default class CardHomeTabPlugin extends Plugin {
     if (!written) {
       return;
     }
-    this.refreshHome();
+    this.refreshHomeCards();
   }
 
-  async moveCard(from: number, to: number): Promise<void> {
+  /**
+   * 把第 `from` 张卡片移到 `target` 指定的「某列的第几张」。
+   *
+   * 要做两件事：把它的 `col` 写成目标列，并在笔记里挪到该列对应的位置。两件事各自判断
+   * 需不需要做——**不能**因为「笔记顺序没变」就整个跳过：把某列唯一的卡片拖到另一个空列
+   * 时顺序确实不变，但列必须改，早退会让这种拖拽静默失效。
+   *
+   * 同时**固化**所有还没写 `col` 的卡片。不固化的话，未指定 col 的卡片靠「笔记序号 % 列数」
+   * 回退，而这次移动会让后续卡片的序号集体位移、连带跳列——正是列布局要消灭的现象。
+   * 固化是一次性的、且写入的就是它们此刻的实际列号，所以视觉布局不变。
+   */
+  async moveCardTo(from: number, target: DropTarget, columns: number): Promise<void> {
     const level = this.settings.cardHeadingLevel;
+    let lossy = false;
     // 走 writeDashboard 而不是裸 process：io.ts 的 process() 在文件缺失时会抛，
-    // 而 home-view 是 `void this.plugin.moveCard(...)` 调用，裸抛只会留下未处理的 rejection。
-    //
-    // sections 必须在这儿现算：回调是在 vault.process 内部对**重新读出来的文本**跑的，
-    // 拿外面那份快照的偏移去切新文本会切错位置，把 section 挪坏而不只是挪错位置。
+    // 而 home-view 是 `void this.plugin.moveCardTo(...)` 调用，裸抛只会留下未处理的 rejection。
     const written = await this.writeDashboard((text) => {
-      const sections = parseDashboard(text, level);
-      const last = sections.length - 1;
-      if (from === to || from < 0 || to < 0 || from > last || to > last) {
-        return text;
-      }
-      return moveCardInText(text, sections, from, to);
+      // sections 必须在回调里现算：回调跑在 vault.process 内部、对**重新读出来的文本**执行，
+      // 拿外面那份快照的偏移去切新文本会切错位置，把 section 挪坏而不只是挪错位置。
+      const result = applyColumnDrop({
+        text,
+        sections: parseDashboard(text, level),
+        from,
+        target,
+        columns,
+        headingLevel: level,
+      });
+      lossy = result.lossy;
+      return result.text;
     });
+    if (lossy) {
+      new Notice(
+        "有卡片的 %%card: 行含插件无法表示的内容，它们的列号没有写入。请先手工调整那些行。",
+      );
+    }
     if (!written) {
       return;
     }
-    this.refreshHome();
+    this.refreshHomeCards();
   }
 
   async editCard(section: CardSection): Promise<void> {
@@ -287,6 +350,7 @@ export default class CardHomeTabPlugin extends Plugin {
       app: this.app,
       section,
       snippets: this.snippets,
+      maxColumns: this.settings.gridColumns,
       onApply: (meta) => {
         void this.applyCardMeta(section, meta);
       },
@@ -334,7 +398,7 @@ export default class CardHomeTabPlugin extends Plugin {
     if (!written) {
       return;
     }
-    this.refreshHome();
+    this.refreshHomeCards();
   }
 
   private async writeDashboard(mutate: (text: string) => string): Promise<boolean> {

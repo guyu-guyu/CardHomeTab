@@ -7,6 +7,8 @@ export interface CardSettingsArgs {
   app: App;
   section: CardSection;
   snippets: SnippetRegistry;
+  /** 设置里的网格列数，作为「所在列」的上界 */
+  maxColumns: number;
   onApply: (meta: CardMeta) => void;
 }
 
@@ -22,6 +24,7 @@ export class CardSettingsModal extends Modal {
   private selectedSnippets: string[];
   private iconValue: string;
   private spanValue: number;
+  private colValue: number;
   private iconPreview: HTMLElement | null = null;
 
   constructor(args: CardSettingsArgs) {
@@ -30,6 +33,7 @@ export class CardSettingsModal extends Modal {
     this.draft = {
       css: [...args.section.meta.css],
       span: args.section.meta.span,
+      col: args.section.meta.col,
       icon: args.section.meta.icon,
       entries: args.section.meta.entries.map((entry) => ({ ...entry })),
     };
@@ -44,6 +48,7 @@ export class CardSettingsModal extends Modal {
       .map((name) => `user:${name}`);
     this.iconValue = this.draft.icon;
     this.spanValue = this.draft.span;
+    this.colValue = args.section.meta.col;
   }
 
   async onOpen(): Promise<void> {
@@ -55,6 +60,7 @@ export class CardSettingsModal extends Modal {
     this.renderIcon(contentEl);
     this.renderSnippets(contentEl);
     this.renderSpan(contentEl);
+    this.renderCol(contentEl);
     this.renderFooter(contentEl);
   }
 
@@ -141,6 +147,28 @@ export class CardSettingsModal extends Modal {
     }
   }
 
+  /**
+   * 所在列。和「跨列数」并排放在这里，让不想用拖拽的人也能精确指定位置——拖拽给的是
+   * 相对落点，这里给的是确定值。
+   *
+   * 留空 / 0 表示"未指定"，由布局层按笔记顺序轮转决定——这和从没拖过的卡片是同一种状态，
+   * 所以这里要能回到它，不能强制用户选一个具体列。
+   */
+  private renderCol(parent: HTMLElement): void {
+    const row = parent.createDiv({ cls: "home-tab-setting-row" });
+    row.createDiv({ cls: "home-tab-setting-label", text: "所在列" });
+    const input = row.createEl("input", {
+      cls: "home-tab-span-input",
+      attr: { type: "number", min: "0", max: String(this.args.maxColumns), placeholder: "自动" },
+    });
+    input.value = this.colValue > 0 ? String(this.colValue) : "";
+    input.addEventListener("input", () => {
+      const parsed = Number.parseInt(input.value, 10);
+      this.colValue =
+        Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, this.args.maxColumns) : 0;
+    });
+  }
+
   private renderSpan(parent: HTMLElement): void {
     const row = parent.createDiv({ cls: "home-tab-setting-row" });
     row.createDiv({ cls: "home-tab-setting-label", text: "跨列数" });
@@ -163,6 +191,7 @@ export class CardSettingsModal extends Modal {
     apply.addEventListener("click", () => {
       this.draft.css = [...this.selectedSnippets];
       this.draft.span = this.spanValue;
+      this.draft.col = this.colValue;
       this.draft.icon = this.iconValue;
       this.args.onApply(this.draft);
       this.close();

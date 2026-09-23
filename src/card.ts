@@ -49,11 +49,7 @@ export interface CardViewArgs {
   dashboardPath: string;
   cardId: string;
   index: number;
-  /** 当前网格的列数；span 超过它会产生隐式列并撑破网格，所以在这里夹住。 */
-  maxSpan: number;
-  gridEl: HTMLElement;
   callbacks: CardCallbacks;
-  onDrop: (from: number, to: number) => void;
 }
 
 export class CardView {
@@ -101,17 +97,11 @@ export class CardView {
     content.addClass("markdown-rendered");
     this.contentEl = content;
 
-    const span = Math.min(args.section.meta.span, args.maxSpan);
-    if (span > 1) {
-      this.el.style.gridColumn = `span ${span}`;
-    }
 
     this.disposeDrag = enableCardDrag({
-      gridEl: args.gridEl,
       cardEl: this.el,
       handleEl: this.handleEl,
       index: args.index,
-      onDrop: args.onDrop,
       isEnabled: () => this.dragEnabled,
     });
   }

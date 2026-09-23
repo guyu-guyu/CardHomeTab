@@ -43,7 +43,7 @@ describe("content style registry", () => {
     used.delete("is-dragging"); // card-grid 拖拽态，直接加在卡片上
     used.delete("is-missing"); // page-header 的 logo 加载失败态
     used.delete("is-column"); // 弹窗里设置行的纵向排列
-    used.delete("is-masonry"); // masonry.ts 接上 ResizeObserver 后才加的布局态
+    used.delete("is-column-layout"); // column-layout.ts 接上 ResizeObserver 后才加的布局态
     for (const gate of used) {
       expect(declared.has(gate), `stylesheet uses .${gate}, which no feature declares`).toBe(true);
     }

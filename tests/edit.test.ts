@@ -113,6 +113,27 @@ describe("moveCard", () => {
     ]);
   });
 
+  /**
+   * 把 `to` 的语义钉死：它是**移除之后**的下标，不是移除之前的插入位置。
+   *
+   * 三张卡 [甲乙丙]，把甲（0）移到 `to=2`，结果是 [乙丙甲]——若 `to` 是移除前的下标，
+   * "插到丙(2)之前"应当得到 [乙甲丙]。拖拽侧正是因为这条语义才必须做
+   * `to = raw > from ? raw - 1 : raw` 的补偿；哪天有人把这里"简化"掉，往后拖会整体偏一格。
+   */
+  it("treats `to` as the index after the card has been removed", () => {
+    const sections = parseDashboard(text, 2);
+    expect(parseDashboard(moveCard(text, sections, 0, 2), 2).map((s) => s.title)).toEqual([
+      "乙",
+      "丙",
+      "甲",
+    ]);
+    expect(parseDashboard(moveCard(text, sections, 0, 1), 2).map((s) => s.title)).toEqual([
+      "乙",
+      "甲",
+      "丙",
+    ]);
+  });
+
   it("moves a card earlier", () => {
     const sections = parseDashboard(text, 2);
     expect(parseDashboard(moveCard(text, sections, 2, 0), 2).map((s) => s.title)).toEqual([
