@@ -83,8 +83,9 @@
 
 - **绝不能 `.home-card-header { display: none }`。** 藏掉它等于同时废掉拖拽排序、编辑、删除与卡片设置，之后只能去笔记里手改——而且不报任何错。「隐藏标题」只藏 `.home-card-title` 与 `.home-card-icon`，header 本身改为绝对定位浮到右上角。
 - **浮动 header 之前，`.home-card` 必须自己 `position: relative`。** `.home-tab-cards` 本身就是 `position: relative`（拖拽落点指示线的包含块），卡片不自建包含块的话，绝对定位的 header 会一路锚到**网格**上——所有卡片的操作条叠在网格右上角同一处。
+- **浮动 header 必须有 `z-index`，同时 `.home-card` 必须 `isolation: isolate`，两者缺一不可。** 「定位元素本就在流内容之上」只对**非定位**内容成立，而 Obsidian 的 `.markdown-rendered pre` 是 `position: relative`（复制按钮要锚在它上面）。两者都是 `z-index: auto` 的定位元素时按 DOM 顺序绘制，header 在内容之前，于是每个代码块都会盖住操作条、只露出上半截。callout、嵌入、base 视图里也有用到 `z-index` 的内容，所以取一个宽裕的值；而 `isolation` 保证这个值只在本张卡片内部生效，不会跑到网格那一层去和 `z-index: 3` 的落点指示线比大小。
 
-配套的几点：浮动后要清 `margin-bottom`（否则它作用在绝对定位盒上、把操作条下移）、给 `width: auto`（否则一条透明带子横在卡片顶部吃掉正文的点击与文本选中）、不可见时 `pointer-events: none`、**不要加 `z-index`**（会盖住 `z-index: 3` 的落点指示线）、右侧内缩按圆角用 `max()`（`overflow: hidden` 的裁剪沿圆角曲线走，圆角调大时固定内缩会切掉操作条一角）。
+配套的几点：浮动后要清 `margin-bottom`（否则它作用在绝对定位盒上、把操作条下移）、给 `width: auto`（否则一条透明带子横在卡片顶部吃掉正文的点击与文本选中）、不可见时 `pointer-events: none`、右侧内缩按圆角用 `max()`（`overflow: hidden` 的裁剪沿圆角曲线走，圆角调大时固定内缩会切掉操作条一角）。
 
 ### 碰 Bases（base 视图）时
 
@@ -153,7 +154,7 @@ e.startsWith("lucide-") ? 查 lucide 表(e.substring(7)) : 查 Obsidian 自有�
 - 数值越界被钳到范围内，类型不对时回落默认值；枚举默认值必须是合法选项（否则下拉框打开是空白）。
 - 数值型变量的输出必须带单位。
 - 命中 `.bases-tr` / `.bases-td` / `.bases-tbody` 的规则不得声明布局属性。
-- `.home-card-header` 不得被 `display: none`；浮动它时 `.home-card` 必须 `position: relative`、header 必须有 `pointer-events` 且不得有 `z-index`。
+- `.home-card-header` 不得被 `display: none`；浮动它时 `.home-card` 必须 `position: relative` 且 `isolation: isolate`、header 必须有 `pointer-events: none` 与 `z-index`。**这一条原先写的是「不得有 z-index」，把「代码块盖住操作条」那个 bug 一起固化了**——守卫只能锁住写它的人当时以为对的事，所以正反两面都要钉。
 - `styles.css` 里不得出现 `.home-card-content .markdown-rendered` 这种带空格的死写法。
 - 设置页折叠块：`settings-tab.ts` 与 `styles.css` 的 `home-tab-collapse*` 类名必须一一对应，图标 id 不带 `lucide-` 前缀，旋转只能写在 `:not([open])` 上，`summary` 必须关掉原生 marker（详见上文「设置页的折叠块」）。
 

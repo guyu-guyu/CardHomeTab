@@ -93,7 +93,8 @@ Cards are laid out **by column**: every card belongs to a column, cards stack to
 - **The first time you drag a card, the plugin writes the current column into every card that has no `col` yet.** This happens once, it records what was already on screen, so the layout does not shift. Without it the round-robin fallback depends on the note position, and moving a card would shift every later card's position and make them jump columns.
 - Order inside a column follows note order, so dragging also reorders the sections in the note.
 - A card with `span` greater than 1 spans columns. It lands below the lowest free position of the columns it covers and pushes all of them down — a wide card couples the columns it spans at that point, which is the only sensible meaning of spanning. For drop targeting it counts as a member of **every column it covers**, so a card can be dropped above a wide card even when that wide card sits at the top.
-- Below 900px the grid collapses to a single column and `col` is ignored.
+- The board fills the whole home view by default. Page → limit the board width caps it (the total width of every column plus the gaps between them) and centres it; the branding, the search bar and the background stay full width.
+- Below 900px of **available** width the grid collapses to a single column and `col` is ignored. That threshold looks at the width the pane offers, not at the capped board width, so setting a cap below 900 does not collapse the columns.
 
 ## Content styles
 
@@ -170,7 +171,7 @@ Commands (the interface is in Chinese):
 
 | Section | Settings |
 | --- | --- |
-| Page | Dashboard file (a text field with note completion, so a path that does not exist yet can be typed in), card heading level (H2–H6), grid columns (1–6), replace new tabs, open home on startup |
+| Page | Dashboard file (a text field with note completion, so a path that does not exist yet can be typed in), card heading level (H2–H6), grid columns (1–6), limit the board width and the board width itself (600–2400, only shown while the limit is on), replace new tabs, open home on startup |
 | Branding | Logo type (none / built-in icon / vault image / URL), icon id or image path, logo scale (0.2–5), logo colour (empty follows the theme accent; built-in icons only), wordmark text, show wordmark, wordmark font size, wordmark font weight (100–900) |
 | Background | Background type (none / vault image / URL), light background, dark background (empty falls back to the light one), blur (0–40), dim (0–100) |
 | Search | Show search bar, Markdown only, show path, show bookmarks, show recent files, max results (1–50), recent files count (0–20) |
