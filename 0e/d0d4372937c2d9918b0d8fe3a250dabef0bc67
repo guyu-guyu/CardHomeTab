@@ -1,0 +1,20 @@
+CHANGELOG.md
+  h_d9088715075e51 3,16,29
+manifest.json
+  h_d9088715075e51 4
+package.json
+  h_d9088715075e51 3
+versions.json
+  h_d9088715075e51 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0ed0d4372937c2d9918b0d8fe3a250dabef0bc67",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
