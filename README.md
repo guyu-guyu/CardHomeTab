@@ -97,17 +97,23 @@ Cards are laid out **by column**: every card belongs to a column, cards stack to
 
 ## Content styles
 
-These are set once in the settings and apply to every card, so the common cases need no CSS at all. Each one is an independent on/off switch, they combine freely, and all of them are off by default. The rules ship in the plugin's `styles.css` and are gated behind a class on the home view, so turning one off leaves no trace.
+These are set once in the settings and apply to every card, so the common cases need no CSS at all. They are independent of one another, combine freely, and every default equals what the plugin looked like before, so upgrading changes nothing. The rules ship in the plugin's `styles.css` and are driven by a class or a CSS variable on the home view, so going back to the defaults leaves no trace.
 
-The settings page groups them into collapsible blocks per content type.
+The settings page groups them into collapsible blocks per type. Every block — including Branding, Background and Search — has a reset button on the right of its header. It only shows up when that block differs from the defaults, and it restores just that block.
 
-| Content type | Switch | What it does |
+| Type | Setting | What it does |
 | --- | --- | --- |
+| Card | Show the card title | With it off, the title and icon are hidden and the content starts at the very top. The drag handle and the settings, edit and delete buttons float to the top-right corner and appear on hover — they live in the same DOM layer as the title, so they are moved rather than hidden with it. |
+| Card | Corner radius | `0–24`, defaults to 8 (the same as Obsidian's `--radius-m`). |
+| Card | Card gap | `0–48`, defaults to 16. Applies to both directions. |
+| Card | Border style | None / solid / dashed / dotted, defaults to solid. Picking none is the same as setting the width to 0. |
+| Card | Border width | `0–8`, defaults to 1. |
+| Card | Shadow | Never / always / on hover, defaults to never. The strength comes from the theme's `--shadow-s`. |
 | Table | Zebra stripes | Gives the data rows of a Markdown table alternating backgrounds. The header is untouched, hover still works, and tables rendered by `base` or Dataview are left alone. |
 | Base | Bar rows | Paints every row of a base table view as a full-width rounded block, with gaps instead of row and column separators. Cells stay side by side on one line: the Bases table is virtualised and JS positions its rows and cells, so this option only paints and never changes layout. |
 | Base | Hide the toolbar | Hides the control row at the top (view switcher, result count, sort, filter, properties), leaving only the content. |
 
-The stripe colour comes from `--background-modifier-hover`. Override it per theme or per vault with `--home-tab-table-zebra`; the bar rows use `--home-tab-base-bar`.
+The colours can be overridden per theme or per vault: `--home-tab-table-zebra` for the stripes (which default to `--background-modifier-hover`), `--home-tab-base-bar` for the bar rows, and `--home-tab-card-shadow` for the card shadow.
 
 More content types (base views, callouts) will follow the same pattern.
 
@@ -168,7 +174,7 @@ Commands (the interface is in Chinese):
 | Branding | Logo type (none / built-in icon / vault image / URL), icon id or image path, logo scale (0.2–5), logo colour (empty follows the theme accent; built-in icons only), wordmark text, show wordmark, wordmark font size, wordmark font weight (100–900) |
 | Background | Background type (none / vault image / URL), light background, dark background (empty falls back to the light one), blur (0–40), dim (0–100) |
 | Search | Show search bar, Markdown only, show path, show bookmarks, show recent files, max results (1–50), recent files count (0–20) |
-| Content styles | Switches grouped per content type: table (zebra stripes), base (bar rows, hide the toolbar) |
+| Content styles | Collapsible blocks per type: card (show title, radius, gap, border style and width, shadow), table (zebra stripes), base (bar rows, hide the toolbar) |
 | Snippets | Your snippets with their paths, the snippet folder, and a "refresh list" button |
 
 ## Known limitations
