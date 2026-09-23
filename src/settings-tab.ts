@@ -4,12 +4,14 @@ import {
   PluginSettingTab,
   prepareFuzzySearch,
   Setting,
+  setIcon,
   type App,
   type SettingDefinitionItem,
   type TFile,
 } from "obsidian";
 import { errorMessage } from "./errors";
-import { CONTENT_STYLE_GROUPS } from "./content-styles";
+import { CONTENT_STYLE_GROUPS, enumOptions, groupFeatures } from "./content-styles";
+import { writeContentStyle } from "./settings";
 import type CardHomeTabPlugin from "./main";
 
 /**
@@ -66,9 +68,51 @@ class FilePathSuggest extends AbstractInputSuggest<TFile> {
 export class CardHomeTabSettingTab extends PluginSettingTab {
   private readonly plugin: CardHomeTabPlugin;
 
+  /** 展开过的折叠块。tab 实例跨 renderTab() 存活，所以重建之后还能恢复展开态。 */
+  private readonly expandedBlocks = new Set<string>();
+
   constructor(app: App, plugin: CardHomeTabPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  /**
+   * 折叠块：最左边一个三角箭头（与 Obsidian 自身的折叠指示一致），右边是名称与可选说明。
+   *
+   * 用原生 <details>/<summary> 而不是自己做折叠：不必维护展开状态，也自带键盘可达性。
+   * 但展开态要自己记住——「Logo 类型」变更与「刷新列表」都会整页重建，不记的话用户刚展开
+   * 的块会自己合上。状态存在 tab 实例上，它跨 renderTab() 存活。
+   */
+  private collapsibleBlock(
+    parent: HTMLElement,
+    key: string,
+    name: string,
+    description = "",
+  ): HTMLElement {
+    const block = parent.createEl("details", { cls: "home-tab-collapse" });
+    const summary = block.createEl("summary", { cls: "home-tab-collapse-summary" });
+    // 箭头必须是 summary 的第一个子元素，否则会跑到名称右边去；样式表按这个顺序写选择器。
+    //
+    // 图标名**不能**写成 `lucide-right-triangle`。`getIcon` 查两张互不相通的表：带 `lucide-`
+    // 前缀的会剥掉前缀去查 lucide 图标表，不带前缀的才查 Obsidian 自有图标表。而
+    // `right-triangle` 只存在于自有表（Obsidian 自己的树状图、属性面板、编辑器折叠三处
+    // 折叠指示用的都是这个不带前缀的名字）。写成带前缀的话查不到、返回 null，setIcon
+    // 什么都不画——箭头静默消失，不报任何错。
+    setIcon(summary.createSpan({ cls: "home-tab-collapse-arrow" }), "right-triangle");
+    summary.createSpan({ cls: "home-tab-collapse-name", text: name });
+    if (description.length > 0) {
+      summary.createSpan({ cls: "home-tab-collapse-desc", text: description });
+    }
+    block.open = this.expandedBlocks.has(key);
+    // `toggle` 不冒泡，但它派发在 details 自身，所以直接监听即可
+    block.addEventListener("toggle", () => {
+      if (block.open) {
+        this.expandedBlocks.add(key);
+      } else {
+        this.expandedBlocks.delete(key);
+      }
+    });
+    return block;
   }
 
   /**
@@ -165,9 +209,14 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("品牌区").setHeading();
+    const brandBlock = this.collapsibleBlock(
+      containerEl,
+      "brand",
+      "品牌区",
+      "首页顶部的图标与文字标识。",
+    );
 
-    new Setting(containerEl).setName("Logo 类型").addDropdown((dropdown) =>
+    new Setting(brandBlock).setName("Logo 类型").addDropdown((dropdown) =>
       dropdown
         .addOptions({ none: "无", lucide: "内置图标", vaultImage: "仓库图片", url: "网络图片" })
         .setValue(settings.logoType)
@@ -178,7 +227,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl)
+    new Setting(brandBlock)
       .setName(settings.logoType === "lucide" ? "图标名" : "图片路径或链接")
       .setDesc(
         settings.logoType === "lucide"
@@ -192,7 +241,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("Logo 缩放").addSlider((slider) =>
+    new Setting(brandBlock).setName("Logo 缩放").addSlider((slider) =>
       slider
         .setLimits(0.2, 5, 0.1)
         .setValue(settings.logoScale)
@@ -202,7 +251,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl)
+    new Setting(brandBlock)
       .setName("Logo 颜色")
       .setDesc("留空则跟随主题强调色。仅对内置图标生效。")
       .addText((text) =>
@@ -212,28 +261,28 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("文字标识文案").addText((text) =>
+    new Setting(brandBlock).setName("文字标识文案").addText((text) =>
       text.setValue(settings.wordmark).onChange((value) => {
         settings.wordmark = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("显示文字标识").addToggle((toggle) =>
+    new Setting(brandBlock).setName("显示文字标识").addToggle((toggle) =>
       toggle.setValue(settings.showWordmark).onChange((value) => {
         settings.showWordmark = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("文字标识字号").addText((text) =>
+    new Setting(brandBlock).setName("文字标识字号").addText((text) =>
       text.setValue(settings.fontSize).onChange((value) => {
         settings.fontSize = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("文字标识字重").addSlider((slider) =>
+    new Setting(brandBlock).setName("文字标识字重").addSlider((slider) =>
       slider
         .setLimits(100, 900, 100)
         .setValue(settings.fontWeight)
@@ -243,9 +292,14 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl).setName("背景").setHeading();
+    const backgroundBlock = this.collapsibleBlock(
+      containerEl,
+      "background",
+      "背景",
+      "首页背景图，以及它的模糊与压暗。",
+    );
 
-    new Setting(containerEl).setName("背景类型").addDropdown((dropdown) =>
+    new Setting(backgroundBlock).setName("背景类型").addDropdown((dropdown) =>
       dropdown
         .addOptions({ none: "无", vaultImage: "仓库图片", url: "网络图片" })
         .setValue(settings.backgroundType)
@@ -255,7 +309,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl)
+    new Setting(backgroundBlock)
       .setName("亮色背景")
       .setDesc("仓库内图片路径或 HTTP(s) 链接。")
       .addText((text) =>
@@ -265,7 +319,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
+    new Setting(backgroundBlock)
       .setName("暗色背景")
       .setDesc("留空则暗色模式也使用亮色背景。")
       .addText((text) =>
@@ -275,7 +329,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName("背景模糊").addSlider((slider) =>
+    new Setting(backgroundBlock).setName("背景模糊").addSlider((slider) =>
       slider
         .setLimits(0, 40, 1)
         .setValue(settings.backgroundBlur)
@@ -285,7 +339,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl).setName("背景压暗").addSlider((slider) =>
+    new Setting(backgroundBlock).setName("背景压暗").addSlider((slider) =>
       slider
         .setLimits(0, 100, 5)
         .setValue(settings.backgroundDim)
@@ -295,44 +349,49 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(containerEl).setName("搜索").setHeading();
+    const searchBlock = this.collapsibleBlock(
+      containerEl,
+      "search",
+      "搜索",
+      "搜索框的行为与建议条数。",
+    );
 
-    new Setting(containerEl).setName("显示搜索框").addToggle((toggle) =>
+    new Setting(searchBlock).setName("显示搜索框").addToggle((toggle) =>
       toggle.setValue(settings.showSearch).onChange((value) => {
         settings.showSearch = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("仅搜索 Markdown").addToggle((toggle) =>
+    new Setting(searchBlock).setName("仅搜索 Markdown").addToggle((toggle) =>
       toggle.setValue(settings.markdownOnly).onChange((value) => {
         settings.markdownOnly = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("显示路径").addToggle((toggle) =>
+    new Setting(searchBlock).setName("显示路径").addToggle((toggle) =>
       toggle.setValue(settings.showPath).onChange((value) => {
         settings.showPath = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("显示书签").addToggle((toggle) =>
+    new Setting(searchBlock).setName("显示书签").addToggle((toggle) =>
       toggle.setValue(settings.showBookmarks).onChange((value) => {
         settings.showBookmarks = value;
         save();
       }),
     );
 
-    new Setting(containerEl).setName("显示最近文件").addToggle((toggle) =>
+    new Setting(searchBlock).setName("显示最近文件").addToggle((toggle) =>
       toggle.setValue(settings.showRecentFiles).onChange((value) => {
         settings.showRecentFiles = value;
         save();
       }),
     );
 
-    new Setting(containerEl)
+    new Setting(searchBlock)
       .setName("结果数")
       .setDesc("搜索建议最多显示多少条。")
       .addSlider((slider) =>
@@ -345,7 +404,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl).setName("最近文件条数").addSlider((slider) =>
+    new Setting(searchBlock).setName("最近文件条数").addSlider((slider) =>
       slider
         .setLimits(0, 20, 1)
         .setValue(settings.maxRecentFiles)
@@ -358,24 +417,62 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("内容样式").setHeading();
 
     // 按内容类型分折叠块渲染，块与开关都来自 CONTENT_STYLE_GROUPS：新增特性只需改注册表。
-    // 用原生 <details>/<summary> 而不是自己做折叠：不必维护展开状态，也自带键盘可达性。
+    // 折叠块与「品牌区 / 背景 / 搜索」共用同一个写法，箭头样式因此天然一致。
+    // key 加前缀，避免将来某个 group 的 id 恰好与上面三段的 key 撞车、变成共享展开态。
     for (const group of CONTENT_STYLE_GROUPS) {
-      const block = containerEl.createEl("details", { cls: "home-tab-style-group" });
-      const summary = block.createEl("summary", { cls: "home-tab-style-group-summary" });
-      summary.createSpan({ cls: "home-tab-style-group-name", text: group.name });
-      summary.createSpan({ cls: "home-tab-style-group-desc", text: group.description });
+      const block = this.collapsibleBlock(
+        containerEl,
+        `style-${group.id}`,
+        group.name,
+        group.description,
+      );
 
-      for (const feature of group.features) {
+      for (const feature of groupFeatures(group)) {
         const key = feature.key;
-        new Setting(block)
-          .setName(feature.name)
-          .setDesc(feature.description)
-          .addToggle((toggle) =>
-            toggle.setValue(settings[key]).onChange((value) => {
-              settings[key] = value;
-              save();
-            }),
-          );
+        const row = new Setting(block).setName(feature.name).setDesc(feature.description);
+        // 三种控件都靠 writeContentStyle 回写：`settings[key] = value` 里 key 是键的联合，
+        // TS 要求值可赋给所有候选属性类型的交集，而两个枚举键的交集是 never（写不进去）。
+        switch (feature.kind) {
+          case "toggle": {
+            row.addToggle((toggle) =>
+              toggle.setValue(settings[key] === true).onChange((value) => {
+                writeContentStyle(settings, key, value);
+                save();
+              }),
+            );
+            break;
+          }
+          case "number": {
+            const current = settings[key];
+            row.addSlider((slider) =>
+              slider
+                .setLimits(feature.min, feature.max, feature.step)
+                .setValue(typeof current === "number" ? current : feature.min)
+                .onChange((value) => {
+                  writeContentStyle(settings, key, value);
+                  save();
+                }),
+            );
+            break;
+          }
+          case "enum": {
+            row.addDropdown((dropdown) => {
+              for (const option of enumOptions(feature.options)) {
+                dropdown.addOption(option.value, option.label);
+              }
+              dropdown.setValue(String(settings[key])).onChange((value) => {
+                writeContentStyle(settings, key, value);
+                save();
+              });
+            });
+            break;
+          }
+          default: {
+            // 注册表加了新 kind 而这里漏写分支时编译不过——否则那个特性会静默没有控件
+            const exhaustive: never = feature;
+            throw new Error(`未处理的内容样式类型：${JSON.stringify(exhaustive)}`);
+          }
+        }
       }
     }
 

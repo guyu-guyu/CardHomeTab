@@ -23,7 +23,10 @@
 
 .home-tab-cards {
   display: grid;
-  gap: var(--size-4-4);
+  /* 间距由设置项「卡片 → 卡片间距」给，兜底 16px 必须与 DEFAULT_SETTINGS.cardGap 同值。
+     竖向间距其实不靠这里的 row-gap（见下一条规则），而是由 column-layout.ts 读 column-gap
+     换算成"多占几个细行"——所以这个变量同时决定了横竖两个方向。 */
+  gap: var(--home-tab-card-gap, var(--size-4-4));
   align-items: start;
 }
 
@@ -36,12 +39,29 @@
   row-gap: 0;
 }
 
+/* 卡片外观的四个变量都来自设置项「卡片」，兜底值必须与 DEFAULT_SETTINGS 里的默认值一一对应
+   （tests/content-styles.test.ts 的 EXPECTED_DEFAULTS 钉住了这层对应，任一侧漂移都会红）。 */
 .home-card {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
+  border: var(--home-tab-card-border-width, 1px) var(--home-tab-card-border-style, solid)
+    var(--background-modifier-border);
+  border-radius: var(--home-tab-card-radius, var(--radius-m));
   background-color: var(--background-primary);
   padding: var(--size-4-3);
   overflow: hidden;
+}
+
+/* 投影。设置项「卡片 → 投影」三态：「不显示」不挂任何类，另两态各挂一个。
+   用 --shadow-s 而不是 --shadow-l：.home-tab-root 是 overflow: clip，大阴影在网格边缘会被切。 */
+.home-tab-root.is-card-shadow-always .home-card {
+  box-shadow: var(--home-tab-card-shadow, var(--shadow-s));
+}
+
+.home-tab-root.is-card-shadow-hover .home-card {
+  transition: box-shadow 120ms ease-in-out;
+}
+
+.home-tab-root.is-card-shadow-hover .home-card:hover {
+  box-shadow: var(--home-tab-card-shadow, var(--shadow-s));
 }
 
 .home-card-header {
@@ -105,6 +125,53 @@
 
 .home-card.is-dragging {
   opacity: 0.45;
+}
+
+/* 关掉设置项「卡片 → 显示卡片标题」后的布局。
+ *
+ * 只藏标题与图标，**绝不能**把 .home-card-header 整个 display: none——拖拽手柄与设置、编辑、
+ * 删除三个按钮都在它里面，藏了之后这些卡片就只能去笔记里手改了。所以改为让 header 脱离
+ * 文档流、浮到右上角，正文因此顶到卡片顶部，而操作条照旧在悬停时出现。 */
+.home-tab-root.is-card-title-hidden .home-card {
+  /* 必须有。.home-tab-cards 自己就是 position: relative（拖拽落点指示线的包含块），
+     卡片不自建包含块的话，下面那个绝对定位的 header 会一路锚到**网格**上——所有卡片的
+     操作条会叠在网格右上角同一处。 */
+  position: relative;
+}
+
+.home-tab-root.is-card-title-hidden .home-card-title,
+.home-tab-root.is-card-title-hidden .home-card-icon {
+  /* 图标跟着标题一起藏：它是标题的装饰，单独留下就是个没有出处的符号 */
+  display: none;
+}
+
+.home-tab-root.is-card-title-hidden .home-card-header {
+  position: absolute;
+  top: var(--size-4-1);
+  /* 圆角越大，overflow: hidden 沿圆角曲线的裁剪就越往里吃，固定内缩会切掉操作条一角。
+     按半径的一半内缩，并保证至少有基础间距。 */
+  right: max(var(--size-4-1), calc(var(--home-tab-card-radius, var(--radius-m)) / 2));
+  /* 脱离文档流后这一行不再占高度，正文顶到 padding 盒顶部。margin 也要清掉，
+     否则它会作用在绝对定位盒上、把操作条整体往下推。 */
+  margin-bottom: 0;
+  /* 不占满整行：否则一条透明带子横在卡片顶部，把正文的点击与文本选中都吃掉 */
+  width: auto;
+  max-width: calc(100% - 2 * var(--size-4-1));
+  /* 不可见时不接事件；可见时由下面那条把交互还给 actions（pointer-events 会继承） */
+  pointer-events: none;
+  /* 刻意不写 z-index：定位元素本就在流内容之上，加了反而会盖住 .home-card-drop-indicator */
+}
+
+.home-tab-root.is-card-title-hidden .home-card-actions {
+  /* 给一层与卡片同色的底板，否则图标直接压在正文文字上，两层都看不清 */
+  background-color: var(--background-primary);
+  border-radius: var(--radius-s);
+  box-shadow: 0 0 0 var(--size-2-1) var(--background-primary);
+}
+
+.home-tab-root.is-card-title-hidden .home-card:hover .home-card-actions,
+.home-tab-root.is-card-title-hidden .home-card:focus-within .home-card-actions {
+  pointer-events: auto;
 }
 
 /* 拖拽落点指示线。由 card-grid.ts 在拖拽期间插入网格，位置用内联 left/top/width 给。
@@ -289,35 +356,75 @@
   font-size: var(--font-ui-small);
 }
 
-/* 设置页「内容样式」下按内容类型分的折叠块（原生 details/summary） */
-.home-tab-style-group {
+/* 设置页的折叠块：品牌区、背景、搜索，以及「内容样式」下按内容类型分的块。
+ *
+ * 用的是原生 <details>/<summary>，但箭头要自己画：summary 被设成 flex 容器之后，浏览器
+ * 不再渲染原生的 disclosure marker，那个三角必须自带。尺寸与过渡沿用 Obsidian 自己的
+ * 折叠指示（app.css 的 .collapse-icon），所以看起来与本体的折叠控件一致。 */
+.home-tab-collapse {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.home-tab-style-group-summary {
+.home-tab-collapse-summary {
   display: flex;
   align-items: baseline;
   gap: var(--size-4-2);
   padding: var(--size-4-3) 0;
   cursor: var(--cursor);
+  /* 双保险：万一同主题的 summary 规则把 display 抢回 list-item，原生 marker 会与我们的
+     箭头同时出现，成为一个谁都看不出原因的「两个三角」 */
+  list-style: none;
 }
 
-.home-tab-style-group-name {
+/* 三角的基线在它自身盒子的下沿，跟着文字基线对齐会看着偏高，所以单独按中线对齐 */
+.home-tab-collapse-arrow {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--nav-collapse-icon-color, var(--text-faint));
+}
+
+.home-tab-collapse-arrow svg.svg-icon {
+  width: 10px;
+  height: 10px;
+  stroke-width: 4px;
+  transition: transform 100ms ease-in-out;
+}
+
+/* 整行都是可点的，指针移上去时把箭头提亮——Obsidian 自己的折叠指示就是这个反馈 */
+.home-tab-collapse-summary:hover .home-tab-collapse-arrow {
+  color: var(--text-muted);
+}
+
+/* 要旋转的是**收起**态，不是展开态。
+ *
+ * `right-triangle` 的 path 是 `M3 8L12 17L21 8`——一个朝**下**的 V 形，所以图标的原始朝向
+ * 已经是「展开」该有的样子，展开态不需要任何 transform。Obsidian 自己也是这么做的
+ * （`.collapse-icon.is-collapsed svg` 才旋转）。反过来写成「展开时转 90deg」会让两个状态
+ * 同时错：收起时朝下、展开时朝左。
+ *
+ * 角度带上 `--direction` 与 Obsidian 保持一致，让 RTL 布局下自动镜像；它由本体在根元素上
+ * 定义（LTR 为 1、RTL 为 -1），给个 fallback 以防取不到。 */
+.home-tab-collapse:not([open]) > .home-tab-collapse-summary .home-tab-collapse-arrow svg.svg-icon {
+  transform: rotate(calc(var(--direction, 1) * -1 * 90deg));
+}
+
+.home-tab-collapse-name {
   font-weight: var(--font-semibold);
 }
 
-.home-tab-style-group-desc {
+.home-tab-collapse-desc {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
 
-/* 展开后的开关向右缩进，视觉上从属于所在的块；并去掉最后一项的分隔线，
+/* 展开后的内容向右缩进，视觉上从属于所在的块；并去掉最后一项的分隔线，
    避免与块自身的下边框叠成双线 */
-.home-tab-style-group > .setting-item {
+.home-tab-collapse > .setting-item {
   padding-inline-start: var(--size-4-4);
 }
 
-.home-tab-style-group > .setting-item:last-child {
+.home-tab-collapse > .setting-item:last-child {
   border-bottom: none;
 }
 

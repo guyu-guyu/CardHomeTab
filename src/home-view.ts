@@ -2,7 +2,7 @@ import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { renderBackground } from "./background";
 import { CardView } from "./card";
 import { enableGridDrop } from "./card-grid";
-import { contentStyleFeatures } from "./content-styles";
+import { contentStyleGates, contentStyleVariables } from "./content-styles";
 import { enableColumnLayout, placeCards, primeColumnLayout, type LayoutCard } from "./column-layout";
 import { parseDashboard, sectionBody } from "./dashboard/parse";
 import { errorMessage } from "./errors";
@@ -94,12 +94,24 @@ export class HomeView extends ItemView {
     // 必须在任何 await 之前置 null，理由见字段声明处
     this.gridEl = null;
     root.empty();
-    // 内容样式的开闸类。必须用幂等的 toggleClass 而不是 addClass：rootEl 在 onOpen()
+    // 内容样式与卡片外观。必须用幂等的 toggleClass 而不是 addClass：rootEl 在 onOpen()
     // 建一次、render() 只清空它的内容，它本身跨次渲染存活，addClass 会让关掉开关后仍残留。
     // 遍历注册表而不是逐个手写，注册表里加一条特性这里就自动生效。
     // 放在早退分支之前，保证"文件缺失"时类的状态也是对的。
-    for (const feature of contentStyleFeatures()) {
-      root.toggleClass(feature.className, this.plugin.settings[feature.key]);
+    //
+    // 枚举型特性的**每个**候选类都会拿到一条（选中的为 true、其余为 false），所以切换枚举时
+    // 旧值的类必然被摘掉，不需要自己记住上一个值。
+    for (const gate of contentStyleGates(this.plugin.settings)) {
+      root.toggleClass(gate.className, gate.on);
+    }
+    // 数值与部分枚举走 CSS 变量。每次都把全部变量重写一遍，所以幂等、也不存在「改回默认值后
+    // 残留旧变量」——变量型特性没有"关"态，0 与 none 也是具体值。
+    //
+    // 只在这条整页路径上写。卡片间距会参与列布局的行距换算，而 placeCards 读的是
+    // getComputedStyle(gridEl).columnGap——变量必须在下面建 gridEl **之前**就位。
+    // 换句话说：任何未来「改了卡片外观但不走整页 render」的路径都会静默失效。
+    for (const variable of contentStyleVariables(this.plugin.settings)) {
+      root.style.setProperty(variable.name, variable.value);
     }
     if (!this.plugin.store.exists()) {
       this.renderMissingFile(root);
