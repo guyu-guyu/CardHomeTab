@@ -1,0 +1,22 @@
+src/settings-tab.ts
+  h_d9088715075e51 8,15-21,87-88,99,115-117,130-166,266,350,408,480
+src/settings.ts
+  h_d9088715075e51 233-312
+styles.css
+  h_d9088715075e51 421-436
+tests/settings.test.ts
+  h_d9088715075e51 2-10,103-179
+tests/styles.test.ts
+  h_d9088715075e51 289-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f6fb194ca67c97e881fdab6ed5b25a947b22fdf9",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
