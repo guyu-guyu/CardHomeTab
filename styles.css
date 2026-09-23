@@ -137,6 +137,10 @@
      卡片不自建包含块的话，下面那个绝对定位的 header 会一路锚到**网格**上——所有卡片的
      操作条会叠在网格右上角同一处。 */
   position: relative;
+  /* 让卡片成为独立的层叠上下文，header 的 z-index 因此只在这张卡片内部生效。
+     否则它会跑到网格那一层去和 .home-card-drop-indicator（z-index: 3）比大小，
+     于是「操作条要压住内容」和「指示线要压住卡片」这两个需求被迫共用一套数字。 */
+  isolation: isolate;
 }
 
 .home-tab-root.is-card-title-hidden .home-card-title,
@@ -159,7 +163,12 @@
   max-width: calc(100% - 2 * var(--size-4-1));
   /* 不可见时不接事件；可见时由下面那条把交互还给 actions（pointer-events 会继承） */
   pointer-events: none;
-  /* 刻意不写 z-index：定位元素本就在流内容之上，加了反而会盖住 .home-card-drop-indicator */
+  /* 必须给 z-index。「定位元素本就在流内容之上」只对**非定位**内容成立，而 Obsidian 的
+     `.markdown-rendered pre` 是 position: relative（复制按钮要锚在它上面）。两者都是
+     z-index: auto 的定位元素时按 DOM 顺序绘制，header 在内容之前，于是每个代码块都会盖住
+     操作条——只露出上半截。callout、嵌入、base 视图里也有用到 z-index 的内容，所以取一个
+     宽裕的值；上面那条 isolation 保证它出不了这张卡片，不会波及指示线。 */
+  z-index: 10;
 }
 
 .home-tab-root.is-card-title-hidden .home-card-actions {

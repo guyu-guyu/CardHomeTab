@@ -234,8 +234,28 @@ describe("card appearance", () => {
     expect(headerRule?.body).toMatch(/position:\s*absolute/);
     // 不可见的操作条若还接事件，卡片顶部会有一条隐形带子吞掉正文的点击与文本选中
     expect(headerRule?.body).toMatch(/pointer-events:\s*none/);
-    // 加了 z-index 会盖住 .home-card-drop-indicator（它是网格的子元素、z-index: 3）
-    expect(headerRule?.body).not.toContain("z-index");
+  });
+
+  /**
+   * 浮动操作条必须同时有 `z-index` 与卡片上的 `isolation: isolate`，两者缺一不可。
+   *
+   * 少了 z-index：`.markdown-rendered pre` 是 `position: relative`（Obsidian 的复制按钮要锚在
+   * 它上面），它与 header 都是 `z-index: auto` 的定位元素，于是按 DOM 顺序绘制——header 在
+   * 内容之前，每个代码块都会盖住操作条，只露出上半截。这条曾经写成「断言不得有 z-index」，
+   * 把那个 bug 一起固化了，所以这里正反两面都钉住。
+   *
+   * 少了 isolation：header 的 z-index 会跑到网格那一层，和 `.home-card-drop-indicator`
+   * （网格的子元素、`z-index: 3`）比大小，取值一旦超过 3 就会把拖拽指示线压住。
+   */
+  it("lifts the floating header above positioned content, but only inside its own card", () => {
+    const headerRule = rulesMatching(stylesheet, /is-card-title-hidden \.home-card-header$/)[0];
+    expect(headerRule?.body, "the header must be lifted above code blocks").toMatch(
+      /(^|[;\s])z-index:\s*\d/,
+    );
+    const cardRule = rulesMatching(stylesheet, /is-card-title-hidden \.home-card$/)[0];
+    expect(cardRule?.body, "the card must isolate that z-index from the drop indicator").toMatch(
+      /isolation:\s*isolate/,
+    );
   });
 });
 
