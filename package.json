@@ -1,6 +1,6 @@
 {
   "name": "obsidian-card-home-tab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A start page with user-defined cards for Obsidian.",
   "main": "dist/main.js",
   "type": "module",

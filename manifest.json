@@ -1,7 +1,7 @@
 {
   "id": "card-home-tab",
   "name": "CardHomeTab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.9.0",
   "description": "A start page with user-defined cards. Card content lives in a single dashboard note, split by headings, with per-card CSS snippets.",
   "author": "guyu-guyu",
