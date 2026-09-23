@@ -1,0 +1,19 @@
+tests/styles.test.ts
+  s_60c3d9d528bc5c::t_5fd0fb97621bc0 37-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "be9630bb712ae9c69231cf535c0fc882ea98e055",
+  "prompts": {},
+  "sessions": {
+    "s_60c3d9d528bc5c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c58e1a28-17d8-487b-bc71-4cfc4e0ac964",
+        "model": "ep-h41hk1xf"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
