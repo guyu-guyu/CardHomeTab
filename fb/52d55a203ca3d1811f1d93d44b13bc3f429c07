@@ -1,0 +1,28 @@
+src/column-layout.ts
+  h_d9088715075e51 150-164,178,286-292
+src/home-view.ts
+  h_d9088715075e51 116-123
+src/settings-tab.ts
+  h_d9088715075e51 16,243-270
+src/settings.ts
+  h_d9088715075e51 41-49,55-63,91-94,279-287,392-399
+styles.css
+  h_d9088715075e51 31-35
+tests/column-layout-dom.test.ts
+  h_d9088715075e51 60-61,119-139,252-281
+tests/settings.test.ts
+  h_d9088715075e51 4,181-212
+tests/styles.test.ts
+  h_d9088715075e51 54-66,365-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fb52d55a203ca3d1811f1d93d44b13bc3f429c07",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
