@@ -5,13 +5,20 @@ import {
   prepareFuzzySearch,
   Setting,
   setIcon,
+  setTooltip,
   type App,
   type SettingDefinitionItem,
   type TFile,
 } from "obsidian";
 import { errorMessage } from "./errors";
 import { CONTENT_STYLE_GROUPS, enumOptions, groupFeatures } from "./content-styles";
-import { writeContentStyle } from "./settings";
+import {
+  hasChangedFromDefault,
+  resetToDefault,
+  SETTING_SECTION_KEYS,
+  writeContentStyle,
+  type ScalarSettingKey,
+} from "./settings";
 import type CardHomeTabPlugin from "./main";
 
 /**
@@ -77,7 +84,8 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
   }
 
   /**
-   * 折叠块：最左边一个三角箭头（与 Obsidian 自身的折叠指示一致），右边是名称与可选说明。
+   * 折叠块：最左边一个三角箭头（与 Obsidian 自身的折叠指示一致），然后是名称与可选说明，
+   * 最右边是「重置」——仅当这一块里有任何设置不等于默认值时才出现。
    *
    * 用原生 <details>/<summary> 而不是自己做折叠：不必维护展开状态，也自带键盘可达性。
    * 但展开态要自己记住——「Logo 类型」变更与「刷新列表」都会整页重建，不记的话用户刚展开
@@ -88,6 +96,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
     key: string,
     name: string,
     description = "",
+    keys: readonly ScalarSettingKey[] = [],
   ): HTMLElement {
     const block = parent.createEl("details", { cls: "home-tab-collapse" });
     const summary = block.createEl("summary", { cls: "home-tab-collapse-summary" });
@@ -103,6 +112,9 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
     if (description.length > 0) {
       summary.createSpan({ cls: "home-tab-collapse-desc", text: description });
     }
+    if (keys.length > 0 && hasChangedFromDefault(this.plugin.settings, keys)) {
+      this.renderResetButton(summary, name, keys);
+    }
     block.open = this.expandedBlocks.has(key);
     // `toggle` 不冒泡，但它派发在 details 自身，所以直接监听即可
     block.addEventListener("toggle", () => {
@@ -113,6 +125,43 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
       }
     });
     return block;
+  }
+
+  /**
+   * 折叠标题右侧的「重置」按钮，只在这一块有改动时才渲染。
+   *
+   * 三个细节都是必须的：
+   *   - `preventDefault()` + `stopPropagation()`：按钮在 `<summary>` 里，而点 summary 的默认
+   *     行为是展开/收起 details。不拦住的话点「重置」会顺带把块折起来，看着像重置失败了。
+   *   - `type="button"`：summary 不是 form，但按钮默认 `type=submit`，在某些容器里会触发提交。
+   *   - 重置后整页重建（`renderTab`）而不是只更新按钮：块里的控件都持有旧值，不重建的话滑块
+   *     与下拉仍显示改动前的位置。重建后这个按钮也会因为不再有改动而自己消失。
+   */
+  private renderResetButton(
+    summary: HTMLElement,
+    name: string,
+    keys: readonly ScalarSettingKey[],
+  ): void {
+    const button = summary.createEl("button", {
+      cls: "home-tab-collapse-reset clickable-icon",
+      attr: { type: "button", "aria-label": `重置${name}` },
+    });
+    setIcon(button, "lucide-rotate-ccw");
+    setTooltip(button, `把${name}恢复为默认值`);
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resetToDefault(this.plugin.settings, keys);
+      void this.plugin
+        .saveSettings()
+        .then(() => {
+          this.plugin.refreshHome();
+          this.renderTab();
+        })
+        .catch((error: unknown) => {
+          new Notice(`重置失败：${errorMessage(error)}`);
+        });
+    });
   }
 
   /**
@@ -214,6 +263,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
       "brand",
       "品牌区",
       "首页顶部的图标与文字标识。",
+      SETTING_SECTION_KEYS.brand,
     );
 
     new Setting(brandBlock).setName("Logo 类型").addDropdown((dropdown) =>
@@ -297,6 +347,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
       "background",
       "背景",
       "首页背景图，以及它的模糊与压暗。",
+      SETTING_SECTION_KEYS.background,
     );
 
     new Setting(backgroundBlock).setName("背景类型").addDropdown((dropdown) =>
@@ -354,6 +405,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
       "search",
       "搜索",
       "搜索框的行为与建议条数。",
+      SETTING_SECTION_KEYS.search,
     );
 
     new Setting(searchBlock).setName("显示搜索框").addToggle((toggle) =>
@@ -425,6 +477,7 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
         `style-${group.id}`,
         group.name,
         group.description,
+        groupFeatures(group).map((feature) => feature.key),
       );
 
       for (const feature of groupFeatures(group)) {

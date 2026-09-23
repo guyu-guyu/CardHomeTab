@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, mergeSettings } from "../src/settings";
+import { contentStyleFeatureList } from "../src/content-styles";
+import {
+  DEFAULT_SETTINGS,
+  hasChangedFromDefault,
+  mergeSettings,
+  NON_SECTION_KEYS,
+  resetToDefault,
+  SETTING_SECTION_KEYS,
+} from "../src/settings";
 
 describe("mergeSettings", () => {
   it("returns defaults for undefined input", () => {
@@ -90,5 +98,82 @@ describe("mergeSettings", () => {
 
   it("rejects a non-array recent files value", () => {
     expect(mergeSettings({ recentFiles: "x" }).recentFiles).toEqual([]);
+  });
+});
+
+/**
+ * 折叠块的「重置」按钮要知道自己管哪些设置键，而那几节的控件是一条条手写的，代码里没有任何
+ * 地方能反推出归属——所以归类必须显式声明，也必须有一条守卫钉住它的完备性。
+ */
+describe("setting sections", () => {
+  const sectioned = Object.values(SETTING_SECTION_KEYS).flat();
+  const registryKeys = contentStyleFeatureList().map((feature) => feature.key);
+
+  /**
+   * 这是本组最重要的一条：新增一个设置项却忘了归到某一节，它就永远不会参与重置——而且
+   * 界面上看不出任何异常，没人会发现。所以把三方并起来与 `CardHomeTabSettings` 的全部键对齐。
+   */
+  it("classifies every setting key exactly once", () => {
+    const claimed = [...sectioned, ...registryKeys, ...NON_SECTION_KEYS];
+    expect(new Set(claimed).size, "a key is claimed by two sections").toBe(claimed.length);
+    expect([...claimed].sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
+  });
+
+  /** 「页面」不是折叠块，其余三节都要真的被设置页当作折叠块用（否则声明了却没有重置按钮） */
+  it("keeps a non-empty key list for every collapsible section", () => {
+    for (const [id, keys] of Object.entries(SETTING_SECTION_KEYS)) {
+      expect(keys.length, `${id} has no keys`).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("reset to default", () => {
+  it("reports no change for a fresh settings object", () => {
+    const settings = mergeSettings(undefined);
+    for (const keys of Object.values(SETTING_SECTION_KEYS)) {
+      expect(hasChangedFromDefault(settings, keys)).toBe(false);
+    }
+    expect(hasChangedFromDefault(settings, contentStyleFeatureList().map((f) => f.key))).toBe(false);
+  });
+
+  it("notices a change in any one key of the section", () => {
+    // 逐个键单独改一次：漏掉某个键的比较（例如只比较了第一个）会在这里暴露
+    for (const keys of Object.values(SETTING_SECTION_KEYS)) {
+      for (const key of keys) {
+        const settings = mergeSettings(undefined);
+        const current = settings[key];
+        resetToDefault(settings, keys);
+        // 造一个与默认值不同的值，类型无关——重置只做等值比较
+        const changed = typeof current === "boolean" ? !current : typeof current === "number" ? current + 1 : `${String(current)}-changed`;
+        (settings as unknown as Record<string, unknown>)[key] = changed;
+        expect(hasChangedFromDefault(settings, keys), `${key} is not compared`).toBe(true);
+      }
+    }
+  });
+
+  it("restores only the keys it was given", () => {
+    const settings = mergeSettings(undefined);
+    settings.logoScale = 3;
+    settings.backgroundBlur = 20;
+    resetToDefault(settings, SETTING_SECTION_KEYS.brand);
+    expect(settings.logoScale).toBe(DEFAULT_SETTINGS.logoScale);
+    // 别的分区不能被顺带重置
+    expect(settings.backgroundBlur).toBe(20);
+  });
+
+  it("restores a content style group, including its enums and numbers", () => {
+    const settings = mergeSettings(undefined);
+    settings.cardRadius = 20;
+    settings.cardShadow = "always";
+    settings.cardTitle = false;
+    const cardKeys = contentStyleFeatureList()
+      .filter((feature) => feature.key.startsWith("card"))
+      .map((feature) => feature.key);
+    expect(hasChangedFromDefault(settings, cardKeys)).toBe(true);
+    resetToDefault(settings, cardKeys);
+    expect(hasChangedFromDefault(settings, cardKeys)).toBe(false);
+    expect(settings.cardRadius).toBe(DEFAULT_SETTINGS.cardRadius);
+    expect(settings.cardShadow).toBe(DEFAULT_SETTINGS.cardShadow);
+    expect(settings.cardTitle).toBe(DEFAULT_SETTINGS.cardTitle);
   });
 });

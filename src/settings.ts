@@ -230,6 +230,86 @@ export function writeContentStyle(
   (settings as unknown as Record<string, unknown>)[key] = value;
 }
 
+/**
+ * 值是标量的设置键。
+ *
+ * 「是否改过」与「重置」都只对这些键成立：`recentFiles` 是数组（运行时数据，不是用户设置），
+ * 逐个比较它没有意义，所以在类型层就把它排除掉——传进去会编译不过。
+ */
+export type ScalarSettingKey = {
+  [K in keyof CardHomeTabSettings]: CardHomeTabSettings[K] extends boolean | number | string
+    ? K
+    : never;
+}[keyof CardHomeTabSettings];
+
+/**
+ * 设置页上手写的那几节各自管哪些键。
+ *
+ * 之所以要显式列出：重置按钮得知道"这一块包含什么"，而这些控件是一条条手写的，代码里没有
+ * 任何地方能反推出归属。内容样式那几组不在这里——它们的键由 `CONTENT_STYLE_GROUPS` 推导。
+ *
+ * `tests/settings.test.ts` 有一条完备性守卫：这里 + 注册表 + 两个非设置项，必须正好等于
+ * `CardHomeTabSettings` 的全部键。所以新增一个设置项时忘了归类，测试会红——否则那个设置
+ * 永远不参与重置，而且没人会发现。
+ */
+export const SETTING_SECTION_KEYS = {
+  /** 「页面」不是折叠块（没有重置按钮），列出来只为让完备性守卫成立 */
+  page: ["dashboardFile", "cardHeadingLevel", "gridColumns", "replaceNewTabs", "openOnStartup"],
+  brand: [
+    "logoType",
+    "logoValue",
+    "logoScale",
+    "logoColor",
+    "wordmark",
+    "showWordmark",
+    "fontSize",
+    "fontWeight",
+  ],
+  background: [
+    "backgroundType",
+    "backgroundLight",
+    "backgroundDark",
+    "backgroundBlur",
+    "backgroundDim",
+  ],
+  search: [
+    "showSearch",
+    "markdownOnly",
+    "showPath",
+    "showBookmarks",
+    "showRecentFiles",
+    "maxResults",
+    "maxRecentFiles",
+  ],
+} as const satisfies Record<string, readonly ScalarSettingKey[]>;
+
+/** 不属于任何分区的键：`version` 是内部字段，`recentFiles` 是运行时数据 */
+export const NON_SECTION_KEYS = ["version", "recentFiles"] as const;
+
+/** 这些键里有任何一个不等于默认值 */
+export function hasChangedFromDefault(
+  settings: CardHomeTabSettings,
+  keys: readonly ScalarSettingKey[],
+): boolean {
+  return keys.some((key) => settings[key] !== DEFAULT_SETTINGS[key]);
+}
+
+/**
+ * 把这些键恢复成默认值。
+ *
+ * 与 `writeContentStyle` 同样的理由需要一次断言：`keys` 是键的联合，逐个赋值时 TS 要求值
+ * 能赋给所有候选属性类型的交集，而那个交集通常是 `never`。
+ */
+export function resetToDefault(
+  settings: CardHomeTabSettings,
+  keys: readonly ScalarSettingKey[],
+): void {
+  const target = settings as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    target[key] = DEFAULT_SETTINGS[key];
+  }
+}
+
 export function mergeSettings(raw: unknown): CardHomeTabSettings {
   const record = asRecord(raw);
   if (!record) {

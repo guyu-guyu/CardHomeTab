@@ -418,6 +418,22 @@
   font-size: var(--font-ui-smaller);
 }
 
+/* 折叠标题右侧的「重置」。只在这一块有改动时才渲染，所以它的出现本身就是「这里被改过」的提示。
+ *
+ * margin-inline-start: auto 把它推到最右：summary 是 flex，名称与说明都不伸展，靠 auto 外边距
+ * 占掉中间的剩余空间比给它们 flex: 1 更稳（说明文字长度不一，拉伸会让按钮位置飘）。
+ * 单独按中线对齐：summary 是 baseline 对齐，图标按钮没有文字基线，跟着基线走会偏低。 */
+.home-tab-collapse-reset {
+  margin-inline-start: auto;
+  align-self: center;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.home-tab-collapse-reset:hover {
+  color: var(--text-normal);
+}
+
 /* 展开后的内容向右缩进，视觉上从属于所在的块；并去掉最后一项的分隔线，
    避免与块自身的下边框叠成双线 */
 .home-tab-collapse > .setting-item {

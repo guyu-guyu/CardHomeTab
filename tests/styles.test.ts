@@ -286,6 +286,14 @@ describe("settings page collapsible blocks", () => {
       .map((line) => [...line.matchAll(/"([^"]+)"/g)].at(-1)?.[1] ?? "");
     expect(iconIds).toContain("right-triangle");
     expect(iconIds).not.toContain("lucide-right-triangle");
+
+    /*
+     * 反过来的一例，放在一起是为了让「两张表」这件事不被忘掉：重置按钮用的 `rotate-ccw`
+     * 属于 **lucide 表**，所以它必须**带** `lucide-` 前缀；漏了前缀会去查 Obsidian 自有表，
+     * 同样查不到、同样静默无图标。判断依据不是名字长相，而是它在哪张表里。
+     */
+    expect(iconIds).toContain("lucide-rotate-ccw");
+    expect(iconIds).not.toContain("rotate-ccw");
   });
 
   /**
