@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contentStyleFeatureList } from "../src/content-styles";
 import {
+  CONTENT_WIDTH_RANGE,
   DEFAULT_SETTINGS,
   hasChangedFromDefault,
   mergeSettings,
@@ -175,5 +176,37 @@ describe("reset to default", () => {
     expect(settings.cardRadius).toBe(DEFAULT_SETTINGS.cardRadius);
     expect(settings.cardShadow).toBe(DEFAULT_SETTINGS.cardShadow);
     expect(settings.cardTitle).toBe(DEFAULT_SETTINGS.cardTitle);
+  });
+});
+
+describe("content width limit", () => {
+  it("defaults to unlimited, so upgrading does not narrow anyone's dashboard", () => {
+    expect(mergeSettings(undefined).limitContentWidth).toBe(false);
+  });
+
+  /**
+   * 设置页的滑块与这里的钳制必须共用 CONTENT_WIDTH_RANGE。各写一遍字面量的话，滑块能拖到
+   * 范围外、读取时被钳回来，用户下次打开设置会看到值自己跳了，而且没有任何报错。
+   */
+  it("clamps the width to the same range the slider offers", () => {
+    expect(mergeSettings({ contentWidth: CONTENT_WIDTH_RANGE.min }).contentWidth).toBe(
+      CONTENT_WIDTH_RANGE.min,
+    );
+    expect(mergeSettings({ contentWidth: CONTENT_WIDTH_RANGE.max }).contentWidth).toBe(
+      CONTENT_WIDTH_RANGE.max,
+    );
+    expect(mergeSettings({ contentWidth: CONTENT_WIDTH_RANGE.min - 100 }).contentWidth).toBe(
+      CONTENT_WIDTH_RANGE.min,
+    );
+    expect(mergeSettings({ contentWidth: CONTENT_WIDTH_RANGE.max + 100 }).contentWidth).toBe(
+      CONTENT_WIDTH_RANGE.max,
+    );
+  });
+
+  /** 关掉限制不该抹掉上次调过的宽度：设置页要在重新打开开关时把它显示回来 */
+  it("keeps the width while the limit is off", () => {
+    const settings = mergeSettings({ limitContentWidth: false, contentWidth: 1400 });
+    expect(settings.limitContentWidth).toBe(false);
+    expect(settings.contentWidth).toBe(1400);
   });
 });

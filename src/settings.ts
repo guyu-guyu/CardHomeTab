@@ -38,10 +38,28 @@ export interface CardHomeTabSettings extends ContentStyleSettings {
   showRecentFiles: boolean;
   maxRecentFiles: number;
   gridColumns: number;
+  /**
+   * 是否给卡片区设上限宽度。关掉时卡片区撑满整个首页宽度。
+   *
+   * 与 `contentWidth` 分成两个字段而不是「0 表示不限制」：设置页要在关掉时把宽度滑块整个
+   * 隐藏起来，那就需要一个独立的开关状态；而且关掉再打开时，用户上次调的宽度还在。
+   */
+  limitContentWidth: boolean;
+  /** 卡片区的上限宽度（px），即所有列加上列间距的总宽。仅在 `limitContentWidth` 为真时生效。 */
+  contentWidth: number;
   recentFiles: RecentFile[];
 }
 
 export const SETTINGS_VERSION = 1;
+
+/**
+ * 栏宽滑块的取值范围。
+ *
+ * 导出成常量是为了让设置页的 `setLimits` 与 `mergeSettings` 的钳制用同一份数字：两处各写一遍
+ * 字面量的话，滑块能拖到 400 而读取时被钳到 600，用户下次打开设置会看到值自己跳了，
+ * 而且没有任何报错。
+ */
+export const CONTENT_WIDTH_RANGE = { min: 600, max: 2400, step: 20 } as const;
 
 export const DEFAULT_SETTINGS: CardHomeTabSettings = {
   version: SETTINGS_VERSION,
@@ -70,6 +88,10 @@ export const DEFAULT_SETTINGS: CardHomeTabSettings = {
   showRecentFiles: true,
   maxRecentFiles: 5,
   gridColumns: 3,
+  // 默认不限制，卡片区撑满首页宽度——与加这个设置之前的表现一致。
+  // 1200 只是打开开关时的起点，不限制时它不起任何作用。
+  limitContentWidth: false,
+  contentWidth: 1200,
   // 卡片外观的默认值必须**等于插件此前写死的样子**，升级后观感零变化。
   // 这些数字与 styles.css 里 `var(--home-tab-card-*, 兜底)` 的兜底值一一对应，
   // 两边漂移会让「默认值」与「实际默认外观」对不上；tests/content-styles.test.ts 钉住了这层对应。
@@ -254,7 +276,15 @@ export type ScalarSettingKey = {
  */
 export const SETTING_SECTION_KEYS = {
   /** 「页面」不是折叠块（没有重置按钮），列出来只为让完备性守卫成立 */
-  page: ["dashboardFile", "cardHeadingLevel", "gridColumns", "replaceNewTabs", "openOnStartup"],
+  page: [
+    "dashboardFile",
+    "cardHeadingLevel",
+    "gridColumns",
+    "limitContentWidth",
+    "contentWidth",
+    "replaceNewTabs",
+    "openOnStartup",
+  ],
   brand: [
     "logoType",
     "logoValue",
@@ -359,6 +389,14 @@ export function mergeSettings(raw: unknown): CardHomeTabSettings {
     showRecentFiles: pickBoolean(record, "showRecentFiles", DEFAULT_SETTINGS.showRecentFiles),
     maxRecentFiles: pickNumber(record, "maxRecentFiles", DEFAULT_SETTINGS.maxRecentFiles, 0, 20),
     gridColumns: pickNumber(record, "gridColumns", DEFAULT_SETTINGS.gridColumns, 1, 6),
+    limitContentWidth: pickBoolean(record, "limitContentWidth", DEFAULT_SETTINGS.limitContentWidth),
+    contentWidth: pickNumber(
+      record,
+      "contentWidth",
+      DEFAULT_SETTINGS.contentWidth,
+      CONTENT_WIDTH_RANGE.min,
+      CONTENT_WIDTH_RANGE.max,
+    ),
     ...mergeContentStyles(record),
     recentFiles: parseRecentFiles(record["recentFiles"]),
   };

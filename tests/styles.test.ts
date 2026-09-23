@@ -52,6 +52,19 @@ describe("column layout contract", () => {
   });
 
   /**
+   * 栏宽上限走 `--home-tab-content-width`，兜底**必须**是 `none`。
+   *
+   * 兜底写成某个具体宽度的话，视图只要有一次还没走过整页 render（变量尚未写到根节点上），
+   * 卡片区就会凭空被卡住；而 `home-view.ts` 在关掉开关时也是靠写 `none` 来解除限制，
+   * 两处口径必须一致。`margin-inline: auto` 负责居中，它在 max-width 为 none 时算成 0。
+   */
+  it("caps the board width through a variable whose fallback is none", () => {
+    const plain = /\.home-tab-cards\s*\{([^}]*)\}/.exec(stylesheet);
+    expect(plain?.[1]).toMatch(/max-width:\s*var\(--home-tab-content-width,\s*none\)/);
+    expect(plain?.[1]).toMatch(/margin-inline:\s*auto/);
+  });
+
+  /**
    * 列数由 JS 单点决定（`primeColumnLayout` 写内联 `grid-template-columns`）。CSS 里再写死一份
    * 会在某个断点与内联值分叉；而在卡片渲染循环开始前就写内联值，正是"拖动后卡片先全宽再吸附"
    * 那个闪烁的修复手段——CSS 里补一份既多余又会打架。
@@ -347,5 +360,22 @@ describe("settings page collapsible blocks", () => {
     const rule = rulesMatching(stylesheet, /^\.home-tab-collapse-summary$/)[0];
     expect(rule).toBeDefined();
     expect(rule?.body).toContain("list-style: none");
+  });
+});
+
+/**
+ * 「栏宽宽度」滑块的范围必须取自 `CONTENT_WIDTH_RANGE`，不能在设置页里另写一遍字面量。
+ *
+ * 这条守不住的后果是无声的：滑块能拖到 400，`mergeSettings` 读取时被钳回 600，用户下次打开
+ * 设置发现值自己跳了，界面上没有任何提示。同一份常量是唯一能让两边不分叉的办法。
+ */
+describe("content width slider range", () => {
+  const tabSource = readFileSync(
+    fileURLToPath(new URL("../src/settings-tab.ts", import.meta.url)),
+    "utf8",
+  );
+
+  it("takes its limits from the shared constant instead of literals", () => {
+    expect(tabSource).toContain("CONTENT_WIDTH_RANGE.min, CONTENT_WIDTH_RANGE.max");
   });
 });

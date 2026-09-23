@@ -57,6 +57,8 @@ class FakeEl {
   style = new FakeStyle();
   classSet = new Set<string>();
   clientWidth = 1200;
+  /** 没有父元素时 availableWidth 退回自身宽度，所以默认留空 */
+  parentElement: FakeEl | null = null;
   rect = { left: 0, top: 0, right: 0, bottom: 0, height: 0 };
   ownerDocument = {
     defaultView: {
@@ -112,6 +114,27 @@ describe("primeColumnLayout", () => {
     const grid = gridOf(0);
     expect(primeColumnLayout(grid as unknown as HTMLElement, 3)).toBe(3);
     expect(grid.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
+  });
+
+  /**
+   * 「限制栏宽」给网格加 max-width，网格自身的 clientWidth 因此等于 min(可用宽, 上限)。
+   * 列数必须按**可用宽**判，否则把栏宽设成小于 NARROW_WIDTH 的值就会把多列塌成单列——
+   * 那个设置就成了「一开启就只剩一列」，用户看不出是哪里出的问题。
+   */
+  it("counts columns by the available width, not the capped grid width", () => {
+    const stage = gridOf(1600);
+    const grid = gridOf(700); // 栏宽被限制到 700
+    grid.parentElement = stage;
+    expect(primeColumnLayout(grid as unknown as HTMLElement, 3)).toBe(3);
+    expect(grid.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
+  });
+
+  it("still collapses when the pane itself is narrow", () => {
+    // 反向：真正空间不够时仍要收成单列，不能因为改用父容器宽度就把这条规则弄丢
+    const stage = gridOf(600);
+    const grid = gridOf(600);
+    grid.parentElement = stage;
+    expect(primeColumnLayout(grid as unknown as HTMLElement, 3)).toBe(1);
   });
 
   it("does not rewrite values that already match", () => {
@@ -225,5 +248,35 @@ describe("enableColumnLayout reuse contract", () => {
     expect(observed).toHaveLength(3);
     dispose();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  /**
+   * 栏宽被限制后，面板变宽时网格自身的宽度停在上限不动。只观察网格的话 ResizeObserver
+   * 不会触发，列数就永远停在上一次的判断上——上限 700 时把面板从 800 拉到 1400，
+   * 本该从单列变回多列，实际却一直是单列。
+   */
+  it("observes the parent as well, whose width is what decides the column count", () => {
+    const observed: unknown[] = [];
+    class FakeObserver {
+      observe(target: unknown): void {
+        observed.push(target);
+      }
+      disconnect(): void {}
+      unobserve(): void {}
+    }
+    const stage = gridOf(1600);
+    const grid = gridOf(700);
+    grid.parentElement = stage;
+    grid.ownerDocument = {
+      defaultView: {
+        getComputedStyle: () => ({ columnGap: "16px" }),
+        ResizeObserver: FakeObserver,
+        requestAnimationFrame: () => 1,
+        cancelAnimationFrame: () => undefined,
+      } as unknown as Window,
+    };
+    const dispose = enableColumnLayout(grid as unknown as HTMLElement, [cardOf(100, 1)], 3);
+    expect(observed).toContain(stage);
+    dispose();
   });
 });

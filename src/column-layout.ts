@@ -148,6 +148,21 @@ export interface LayoutCard {
 }
 
 /**
+ * 判断列数时该看的宽度：网格**父容器**的宽度，而不是网格自身的。
+ *
+ * 「限制栏宽」给网格加了 `max-width`，网格自身的 `clientWidth` 因此等于 `min(可用宽, 上限)`。
+ * 拿它去判窄屏的话，把栏宽设成小于 `NARROW_WIDTH` 的值就会让多列直接塌成单列——这个设置
+ * 等于自己把自己废掉。收成单列是因为**面板空间不够**，而限制栏宽是用户的明确选择，
+ * 两者不能混为一谈。
+ *
+ * 取不到父元素时退回网格自身的宽度：那种情况下网格没有被谁约束，两者本就相等。
+ */
+export function availableWidth(gridEl: HTMLElement): number {
+  const parent = gridEl.parentElement;
+  return parent ? parent.clientWidth : gridEl.clientWidth;
+}
+
+/**
  * 把网格置成列布局的**最终几何**：列模板、细行轨道、以及把 `row-gap` 归零的开闸类。返回生效列数。
  *
  * 之所以要能在卡片渲染**之前**单独调用：`render()` 的卡片循环里每张卡片都要 await（读片段、
@@ -160,7 +175,7 @@ export interface LayoutCard {
  *   - 反过来，加了细行轨道却不写 `grid-row`，未定行的卡片只占 1 条 4px 轨道，会塌成细缝。
  */
 export function primeColumnLayout(gridEl: HTMLElement, configuredColumns: number): number {
-  const columns = effectiveColumns(gridEl.clientWidth, configuredColumns);
+  const columns = effectiveColumns(availableWidth(gridEl), configuredColumns);
   const template = `repeat(${columns}, minmax(0, 1fr))`;
   if (gridEl.style.gridTemplateColumns !== template) {
     gridEl.style.gridTemplateColumns = template;
@@ -268,6 +283,13 @@ export function enableColumnLayout(
   const observer = new win.ResizeObserver(schedule);
 
   observer.observe(gridEl);
+  // 父容器也要观察。栏宽被限制之后，面板变宽时网格自身的宽度停在上限不动，只观察网格的话
+  // ResizeObserver 不会触发，列数就永远停在上一次的判断上——例如上限 700 时把面板从 800
+  // 拉到 1400，本该从单列变回多列，实际却一直是单列。
+  const parent = gridEl.parentElement;
+  if (parent) {
+    observer.observe(parent);
+  }
   for (const card of cards) {
     observer.observe(card.el);
   }

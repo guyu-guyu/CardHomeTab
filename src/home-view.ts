@@ -113,6 +113,14 @@ export class HomeView extends ItemView {
     for (const variable of contentStyleVariables(this.plugin.settings)) {
       root.style.setProperty(variable.name, variable.value);
     }
+    // 栏宽上限。关掉开关时要显式写 `none`，不能"不写"——rootEl 跨 render() 存活，内联自定义
+    // 属性不会自己消失，上一次写进去的宽度会一直把卡片区卡在那儿。
+    //
+    // 同样必须在建 gridEl 之前就位：它决定网格的实际宽度，而 primeColumnLayout 要按宽度判列数。
+    root.style.setProperty(
+      "--home-tab-content-width",
+      this.plugin.settings.limitContentWidth ? `${String(this.plugin.settings.contentWidth)}px` : "none",
+    );
     if (!this.plugin.store.exists()) {
       this.renderMissingFile(root);
       return;

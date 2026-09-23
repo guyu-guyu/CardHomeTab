@@ -13,6 +13,7 @@ import {
 import { errorMessage } from "./errors";
 import { CONTENT_STYLE_GROUPS, enumOptions, groupFeatures } from "./content-styles";
 import {
+  CONTENT_WIDTH_RANGE,
   hasChangedFromDefault,
   resetToDefault,
   SETTING_SECTION_KEYS,
@@ -238,6 +239,34 @@ export class CardHomeTabSettingTab extends PluginSettingTab {
           save();
         }),
     );
+
+    new Setting(containerEl)
+      .setName("限制栏宽")
+      .setDesc("给卡片区设一个上限宽度并居中。关掉时卡片区撑满整个首页宽度。")
+      .addToggle((toggle) =>
+        toggle.setValue(settings.limitContentWidth).onChange((value) => {
+          settings.limitContentWidth = value;
+          save();
+          // 下面那条宽度滑块只在开关打开时渲染，所以必须重建设置页，否则用户打开开关后
+          // 看不到宽度设置、以为没生效。展开态记在 tab 实例上，重建不会把折叠块合上。
+          this.renderTab();
+        }),
+      );
+
+    if (settings.limitContentWidth) {
+      new Setting(containerEl)
+        .setName("栏宽宽度")
+        .setDesc("所有列加上列间距的总宽度，单位像素。默认 1200。")
+        .addSlider((slider) =>
+          slider
+            .setLimits(CONTENT_WIDTH_RANGE.min, CONTENT_WIDTH_RANGE.max, CONTENT_WIDTH_RANGE.step)
+            .setValue(settings.contentWidth)
+            .onChange((value) => {
+              settings.contentWidth = value;
+              save();
+            }),
+        );
+    }
 
     new Setting(containerEl)
       .setName("替换新标签页")
