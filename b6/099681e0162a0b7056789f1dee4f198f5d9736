@@ -1,0 +1,16 @@
+package-lock.json
+  h_d9088715075e51 3,9
+versions.json
+  h_d9088715075e51 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b6099681e0162a0b7056789f1dee4f198f5d9736",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
