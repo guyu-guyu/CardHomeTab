@@ -1,0 +1,22 @@
+src/dashboard/default-content.ts
+  h_d9088715075e51 1-94
+src/dashboard/io.ts
+  h_d9088715075e51 41-47,66
+src/main.ts
+  h_d9088715075e51 4,86-88,421,426,434-444,456-470
+src/settings.ts
+  h_d9088715075e51 90-93
+tests/default-dashboard.test.ts
+  h_d9088715075e51 1-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f464b0811644d064cf5476e40b65bee6b7150674",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
