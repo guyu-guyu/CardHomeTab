@@ -87,7 +87,10 @@ export const DEFAULT_SETTINGS: CardHomeTabSettings = {
   showBookmarks: true,
   showRecentFiles: true,
   maxRecentFiles: 5,
-  gridColumns: 3,
+  // 2 列：默认仪表盘的两张卡都是 span=2 的宽卡片，2 列时它们正好各占满一行。
+  // 3 列时两张宽卡片只能挨个占住列 1-2，第 3 列永远空着（README 已记为已知限制）。
+  // 注意这只影响**没保存过设置**的用户：存量用户 data.json 里已存了旧值，不会被覆盖。
+  gridColumns: 2,
   // 默认不限制，卡片区撑满首页宽度——与加这个设置之前的表现一致。
   // 1200 只是打开开关时的起点，不限制时它不起任何作用。
   limitContentWidth: false,

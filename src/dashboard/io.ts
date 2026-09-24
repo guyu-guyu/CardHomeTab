@@ -38,7 +38,13 @@ export class DashboardStore {
     return this.file !== null;
   }
 
-  async create(): Promise<void> {
+  /**
+   * 创建仪表盘文件。
+   *
+   * `content` 留给「新标签页首次打开」那条路径传默认内容；不传就是空文件（原有行为）。
+   * 已经存在时直接返回，绝不覆盖——这是用户手填的路径，覆盖等于毁掉他的笔记。
+   */
+  async create(content = ""): Promise<void> {
     if (!this.path.toLowerCase().endsWith(".md")) {
       throw new Error(`仪表盘文件必须是 Markdown 笔记：${this.path}`);
     }
@@ -57,7 +63,7 @@ export class DashboardStore {
         }
       }
     }
-    await this.vault.create(path, "");
+    await this.vault.create(path, content);
   }
 
   async read(): Promise<string | null> {

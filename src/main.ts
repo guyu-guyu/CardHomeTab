@@ -1,6 +1,7 @@
 import { MarkdownView, Notice, Plugin, type WorkspaceLeaf } from "obsidian";
 import { CardSettingsModal } from "./card-settings";
 import { ConfirmModal } from "./confirm";
+import { defaultDashboard } from "./dashboard/default-content";
 import { DashboardStore } from "./dashboard/io";
 import {
   appendCard as appendCardInText,
@@ -82,7 +83,9 @@ export default class CardHomeTabPlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
-        this.maybeReplaceEmptyLeaf();
+        // 变成 async 了（要先等仪表盘文件创建完），所以必须接住它的 promise，
+        // 否则创建失败会留下一条 unhandled rejection
+        void this.maybeReplaceEmptyLeaf();
       }),
     );
 
@@ -415,12 +418,12 @@ export default class CardHomeTabPlugin extends Plugin {
 
   /** `create()` 在目标路径被同名文件或文件夹占住时会拒绝；这里把拒绝映射成 Notice，
    *  返回是否已存在可用的仪表盘文件。 */
-  private async ensureDashboardFile(): Promise<boolean> {
+  private async ensureDashboardFile(content = ""): Promise<boolean> {
     if (this.store.exists()) {
       return true;
     }
     try {
-      await this.store.create();
+      await this.store.create(content);
       return true;
     } catch (error) {
       new Notice(`CardHomeTab: 无法创建仪表盘文件 ${this.store.path}：${errorMessage(error)}`);
@@ -428,7 +431,17 @@ export default class CardHomeTabPlugin extends Plugin {
     }
   }
 
-  private maybeReplaceEmptyLeaf(): void {
+  /**
+   * 新标签页 → 换成首页。
+   *
+   * 这里会在文件缺失时**直接按默认内容创建**，让用户一打开就有东西看。手动打开首页视图
+   * 那条路径仍然停在"文件缺失"的提示页上、由用户点按钮——那条路径常常是设置里把路径填错了，
+   * 静默写库反而更糟。
+   *
+   * 变成 async 是因为创建文件要等 vault 落盘。重入保护照旧：`layout-change` 会连续派发，
+   * 同一个 leaf 上的第二次进来必须由 `replacingLeaf` 挡掉。
+   */
+  private async maybeReplaceEmptyLeaf(): Promise<void> {
     if (!this.settings.replaceNewTabs) {
       return;
     }
@@ -440,16 +453,21 @@ export default class CardHomeTabPlugin extends Plugin {
       return;
     }
     this.replacingLeaf = leaf;
-    // setViewState 会拒绝（例如视图注册失败）；`.finally` 只负责清标记，接不住 rejection，
-    // 所以末尾再补一个 catch——否则这里会留下一条未处理的 rejection。
-    void leaf
-      .setViewState({ type: HOME_VIEW_TYPE, active: true })
-      .finally(() => {
-        if (this.replacingLeaf === leaf) {
-          this.replacingLeaf = null;
-        }
-      })
-      .catch(() => undefined);
+    try {
+      const content = defaultDashboard({
+        headingLevel: this.settings.cardHeadingLevel,
+        dashboardPath: this.store.path,
+      });
+      await this.ensureDashboardFile(content);
+      // setViewState 会拒绝（例如视图注册失败），所以要接住
+      await leaf.setViewState({ type: HOME_VIEW_TYPE, active: true });
+    } catch {
+      // 换页失败就保持原样，不必打扰用户；创建失败已经由 ensureDashboardFile 给过 Notice
+    } finally {
+      if (this.replacingLeaf === leaf) {
+        this.replacingLeaf = null;
+      }
+    }
   }
 
   async loadSettings(): Promise<void> {
