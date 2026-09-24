@@ -65,6 +65,19 @@ describe("column layout contract", () => {
   });
 
   /**
+   * 居中用的 `margin-inline: auto` 必须配一条显式的横向尺寸。
+   *
+   * 父容器 `.home-tab-stage` 是纵向 flex（交叉轴为横向），而按 Flexbox 规范**交叉轴外边距为
+   * auto 时 `stretch` 不再生效**——少了 `width: 100%`，网格会收缩成 fit-content：宽度由内容
+   * 决定、与列数无关（列数是 `1fr`，只分盒子内部，撑不开盒子本身），卡片少的时候整块就塌成
+   * 一条窄的。这个坑踩过一次：两条规则单看都合理，合起来才出问题。
+   */
+  it("keeps an explicit width next to the auto margins used for centering", () => {
+    const plain = /\.home-tab-cards\s*\{([^}]*)\}/.exec(stylesheet);
+    expect(plain?.[1]).toMatch(/(^|[;\s])width:\s*100%/);
+  });
+
+  /**
    * 列数由 JS 单点决定（`primeColumnLayout` 写内联 `grid-template-columns`）。CSS 里再写死一份
    * 会在某个断点与内联值分叉；而在卡片渲染循环开始前就写内联值，正是"拖动后卡片先全宽再吸附"
    * 那个闪烁的修复手段——CSS 里补一份既多余又会打架。

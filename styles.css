@@ -30,7 +30,12 @@
   align-items: start;
   /* 栏宽上限由设置项「页面 → 限制栏宽 / 栏宽宽度」给，home-view.ts 在关掉时写入 `none`。
      兜底也必须是 `none`：视图若还没走过整页 render（变量尚未写到根节点上），这里不能凭空
-     给出一个上限。margin-inline 在 max-width 为 none 时算成 0，所以不必再加开闸类。 */
+     给出一个上限。margin-inline 在 max-width 为 none 时算成 0，所以不必再加开闸类。
+
+     `width: 100%` 不能省。父容器 .home-tab-stage 是纵向 flex，交叉轴是横向，而按 Flexbox
+     规范**交叉轴外边距为 auto 时 stretch 不再生效**——少了这条，网格会收缩成 fit-content，
+     宽度由内容决定、与列数无关，卡片少的时候整块就塌成一条窄的。 */
+  width: 100%;
   max-width: var(--home-tab-content-width, none);
   margin-inline: auto;
 }
