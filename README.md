@@ -39,6 +39,10 @@ In Obsidian, open **Settings → Community plugins → Browse** and search for "
 
 The default dashboard file is `Home.md`. A heading whose level equals the **card heading level** (2 by default) starts a card; the card body runs until the next heading of that level or a shallower one.
 
+When the file does not exist: **opening a new tab** creates it with default content — two wide cards (`span=2`, each filling a row), each holding an inline base block: recently modified (`file.mtime`, descending) and recently created (`file.ctime`, descending), 10 rows each, with the dashboard note itself excluded. **Opening the home view by hand** still stops at the "dashboard file not found" notice and waits for you to click "create and open" — on that path the usual cause is a mistyped path in the settings, and silently writing a file there would be worse.
+
+The second card was meant to be "files you bookmarked", which is not possible: Bases has no bookmark property and no bookmark function, and bookmarks live in `.obsidian/bookmarks.json`, which Bases cannot read.
+
 ```markdown
 # My home
 
@@ -171,7 +175,7 @@ Commands (the interface is in Chinese):
 
 | Section | Settings |
 | --- | --- |
-| Page | Dashboard file (a text field with note completion, so a path that does not exist yet can be typed in), card heading level (H2–H6), grid columns (1–6), limit the board width and the board width itself (600–2400, only shown while the limit is on), replace new tabs, open home on startup |
+| Page | Dashboard file (a text field with note completion, so a path that does not exist yet can be typed in), card heading level (H2–H6), grid columns (1–6, defaults to 2), limit the board width and the board width itself (600–2400, only shown while the limit is on), replace new tabs, open home on startup |
 | Branding | Logo type (none / built-in icon / vault image / URL), icon id or image path, logo scale (0.2–5), logo colour (empty follows the theme accent; built-in icons only), wordmark text, show wordmark, wordmark font size, wordmark font weight (100–900) |
 | Background | Background type (none / vault image / URL), light background, dark background (empty falls back to the light one), blur (0–40), dim (0–100) |
 | Search | Show search bar, Markdown only, show path, show bookmarks, show recent files, max results (1–50), recent files count (0–20) |
