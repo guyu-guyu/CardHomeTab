@@ -1,0 +1,14 @@
+.github/workflows/release.yml
+  h_d9088715075e51 69-73,78-79,81-82,84-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d8310f627ab4187fa0649b93e44dde376e026a36",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
