@@ -1,0 +1,18 @@
+CHANGELOG.md
+  h_d9088715075e51 3-14
+README.md
+  h_d9088715075e51 42-45,178
+README.zh.md
+  h_d9088715075e51 40-43,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6e28cc78f327770ba27fca73d08a3d481442f2d0",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
