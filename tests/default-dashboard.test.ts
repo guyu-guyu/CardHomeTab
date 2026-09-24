@@ -43,10 +43,35 @@ describe("default dashboard", () => {
     expect(parseDashboard(h3, 2)).toHaveLength(0);
   });
 
-  it("makes both cards wide, which is what the two-column default is for", () => {
-    // 两张宽卡片在 2 列网格里各占满一行；漏掉 span 就会变成两张窄卡、左边空一列
+  it("keeps both cards one column wide, so they sit side by side", () => {
+    // 两张 1 列的卡在默认 2 列网格里并排铺满一行。写成 span=2 会各占满整行、上下堆叠
     for (const meta of parseDashboard(dashboard, LEVEL).map((s) => s.meta)) {
-      expect(meta.span).toBe(2);
+      expect(meta.span).toBe(DEFAULT_CARD_META.span);
+      expect(meta.span).toBe(1);
+    }
+  });
+
+  /**
+   * 视图用 cards，不是 table。
+   *
+   * 这两张卡要的是"每个文件一张卡片"的观感；`type: table` 出来的是表格行。
+   */
+  it("renders each base as the cards view", () => {
+    for (const body of bodiesOf(dashboard)) {
+      const yaml = baseYaml(body);
+      expect(yaml).toMatch(/^\s*-\s*type:\s*cards\s*$/m);
+      expect(yaml).not.toMatch(/type:\s*table/);
+    }
+  });
+
+  /**
+   * `cardSize` 决定"每行几张"：`cardsPerRow = max(1, floor(容器宽 / cardSize))`。
+   * 默认 200 会排成好几张窄卡；取上限 800 才撑成宽卡片。漏掉它的话卡片视图就变成一张
+   * 张小方块，看着像没实现。
+   */
+  it("widens the cards with cardSize at the slider maximum", () => {
+    for (const body of bodiesOf(dashboard)) {
+      expect(baseYaml(body)).toMatch(/^\s*cardSize:\s*800\s*$/m);
     }
   });
 
