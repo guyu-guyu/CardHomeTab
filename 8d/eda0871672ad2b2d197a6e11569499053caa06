@@ -1,0 +1,16 @@
+src/dashboard/default-content.ts
+  h_d9088715075e51 4,8-10,32-40,66-67,73,83
+tests/default-dashboard.test.ts
+  h_d9088715075e51 46-47,49-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8deda0871672ad2b2d197a6e11569499053caa06",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
