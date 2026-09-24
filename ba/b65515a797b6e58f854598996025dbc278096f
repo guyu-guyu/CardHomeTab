@@ -1,0 +1,16 @@
+styles.css
+  h_d9088715075e51 33-38
+tests/styles.test.ts
+  h_d9088715075e51 67-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bab65515a797b6e58f854598996025dbc278096f",
+  "prompts": {},
+  "humans": {
+    "h_d9088715075e51": {
+      "author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
