@@ -66,14 +66,37 @@ jobs:
             echo "CHANGELOG.md 无 $TAG 条目，回退为自动生成"
           fi
 
-      - name: Create GitHub Release
+      # 先建成 draft，不要一步创建成已发布的。`gh release create` 是「先建 release、再逐个上传
+      # 资源」，中间有几十秒窗口：release 已经能被查到，资源却还没挂上。0.2.0 实测这个窗口是
+      # 09:59:33 → 10:00:03，而 Obsidian 的上架校验正好落在里面，于是报「这个版本缺 main.js /
+      # manifest.json」。draft 对外不可见，等资源齐了再翻成已发布，这个窗口就不存在了。
+      - name: Create the release as a draft, with its assets
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           if [ -s release-notes.md ]; then
-            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md \
-              --verify-tag --latest dist/main.js dist/manifest.json dist/styles.css
+            gh release create "$TAG" --draft --title "$TAG" --notes-file release-notes.md \
+              --verify-tag dist/main.js dist/manifest.json dist/styles.css
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes \
-              --verify-tag --latest dist/main.js dist/manifest.json dist/styles.css
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes \
+              --verify-tag dist/main.js dist/manifest.json dist/styles.css
           fi
+
+      # --latest 放在这一步而不是 create：make_latest 只对已发布的 release 有意义，
+      # 在 draft 上给它不一定生效。
+      - name: Publish once every asset is attached
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # 翻成已发布之前先核一遍资源。校验不过就让它留在 draft——draft 对外不可见，
+          # 比发出一个装不上的版本好；这一步失败时需要手动删掉那个 draft 再重跑。
+          NAMES="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          echo "attached: $NAMES"
+          # 用 here-string 而不是 `printf ... | grep -q`：`grep -q` 命中后会立刻退出，写端可能
+          # 拿到 SIGPIPE 变成 141，而 pipefail 会把它当成整条管道失败——资源明明在却判成缺失，
+          # 且只在偶发时暴露。
+          for f in main.js manifest.json styles.css; do
+            grep -qx "$f" <<<"$NAMES" \
+              || { echo "::error::release 资源缺少 $f，保持 draft 不发布"; exit 1; }
+          done
+          gh release edit "$TAG" --draft=false --latest
